@@ -401,6 +401,11 @@ ADD_ASSIMP_IMPORTER( IRR
   AssetLib/Irr/IRRShared.h
 )
 
+ADD_ASSIMP_IMPORTER( LTABC
+  AssetLib/LTABC/LTABCImporter.cpp
+  AssetLib/LTABC/LTABCImporter.h
+)
+
 ADD_ASSIMP_IMPORTER( LWO
   AssetLib/LWO/LWOAnimation.cpp
   AssetLib/LWO/LWOAnimation.h
@@ -1386,7 +1391,9 @@ IF(NOT ASSIMP_HUNTER_ENABLED)
 ENDIF()
 
 IF (ASSIMP_BUILD_NONFREE_C4D_IMPORTER)
-  SET( assimp_src ${assimp_src} ${C4D_SRCS})
+  SET( assimp_src ${assimp_src} ${C4D_SRCS}
+          AssetLib/LTABC/LTABCImporter.cpp
+          AssetLib/LTABC/LTABCImporter.h)
   INCLUDE_DIRECTORIES(${C4D_INCLUDES})
 ENDIF ()
 
