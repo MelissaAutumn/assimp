@@ -63,6 +63,7 @@ namespace Assimp {
 
 namespace LTABC {
 
+
 struct LTString {
     short stringLength;
     char *string;
@@ -88,6 +89,28 @@ struct Transform {
     LTVector Location;
     LTRotation Rotation;
 };
+
+inline aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat) {
+    return {
+        ltMat.m[0].x,
+        ltMat.m[0].y,
+        ltMat.m[0].z,
+        ltMat.m[0].w,
+        ltMat.m[1].x,
+        ltMat.m[1].y,
+        ltMat.m[1].z,
+        ltMat.m[1].w,
+        ltMat.m[2].x,
+        ltMat.m[2].y,
+        ltMat.m[2].z,
+        ltMat.m[2].w,
+        ltMat.m[3].x,
+        ltMat.m[3].y,
+        ltMat.m[3].z,
+        ltMat.m[3].w,
+    };
+}
+
 
 struct IOHeader {
     uint32_t Version;
@@ -213,6 +236,36 @@ struct PieceHeader { // (uint32 LODCount) {
     std::vector<Piece> Pieces; //(LODCount)[PieceCount] <optimize=false>;
 };
 
+struct IONode {
+    uint16_t Index;
+    uint8_t Flags;
+    LTMatrix BindMatrix;
+    uint32_t ChildCount;
+};
+
+struct Node {
+    void LoadNode(const IONode &ioNode) {
+        Index = ioNode.Index;
+        Flags = ioNode.Flags;
+        BindMatrix = LTMatrix2aiMatrix(ioNode.BindMatrix);
+        ChildCount = ioNode.ChildCount;
+    }
+
+    // Model node types.
+#define MNODE_REMOVABLE		(1<<0)	// This node can be removed.
+#define MNODE_ROTATIONONLY	(1<<1)	// Only use rotation info from animation data.
+
+    std::string Name;
+    uint16_t Index;
+    uint8_t Flags;
+    aiMatrix4x4 BindMatrix;
+    aiMatrix4x4 InvBindMatrix;
+    uint32_t ChildCount;
+    Node* Parent;
+};
+
+
+
 } // namespace LTABC
 
 constexpr auto SECTION_HEADER = "Header";
@@ -241,6 +294,7 @@ protected:
      * @return true if success
      */
     bool ReadPieces();
+    bool ReadNodes();
 
     /**
      * Takes various LTABC structs and constructs an assimp mesh
@@ -265,6 +319,7 @@ private:
     aiScene *m_Scene;
     LTABC::Header *m_MeshHeader;
     LTABC::PieceHeader *m_PieceHeader;
+    std::vector<LTABC::Node *> m_Nodes;
 };
 
 } // namespace Assimp

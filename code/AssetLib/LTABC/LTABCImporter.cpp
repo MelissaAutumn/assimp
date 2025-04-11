@@ -2,6 +2,7 @@
 // Created by melissaa on 09/04/25.
 //
 
+#include "assimp/Exporter.hpp"
 #include "assimp/scene.h"
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 #include "LTABCImporter.h"
@@ -96,11 +97,17 @@ void Assimp::LTABCImporter::InternReadFile(const std::string &pFile, aiScene *pS
             m_MeshHeader->LoadHeader(ioHeader, commandString, internalRadius, lodDistanceCount, unkV13Value);
         } else if (sectionName == SECTION_PIECES) {
             ai_assert(ReadPieces());
+        } else if (sectionName == SECTION_NODES) {
+            ai_assert(ReadNodes());
         }
     }
 
     // Build the mesh and all
     ai_assert(BuildMesh());
+
+    std::string out = std::string(pFile + ".gltf");
+    ::Assimp::Exporter exporter;
+    exporter.Export(m_Scene, "gltf2", out);
 }
 
 bool LTABCImporter::ReadPieces() {
@@ -125,6 +132,7 @@ bool LTABCImporter::ReadPieces() {
             lod.FaceCount = m_Buffer->GetU4();
             for (auto f = 0; f < static_cast<int32_t>(lod.FaceCount); ++f) {
                 LTABC::Face face = {};
+                // Struct is padded to 12 bytes, but this is tightly packed.
                 m_Buffer->CopyAndAdvance(&face.Vertices[0], /*sizeof(LTABC::FaceVertex)*/ 10);
                 m_Buffer->CopyAndAdvance(&face.Vertices[1], /*sizeof(LTABC::FaceVertex)*/ 10);
                 m_Buffer->CopyAndAdvance(&face.Vertices[2], /*sizeof(LTABC::FaceVertex)*/ 10);
@@ -158,15 +166,101 @@ bool LTABCImporter::ReadPieces() {
 
     return true;
 }
+bool LTABCImporter::ReadNodes() {
+    CheckBuffer();
+
+    // A mesh shouldn't have 0 nodes!
+    if (m_MeshHeader->NodeCount == 0) {
+        return false;
+    }
+
+    // Read in the list of nodes and while we're doing that construct links to parent->child and a few more handy things
+    std::vector<int> childStack = {};
+    for (auto i = 0; i < static_cast<int>(m_MeshHeader->NodeCount); i++) {
+        auto *node = new LTABC::Node();
+        LTABC::LTMatrix bindMatrix = {};
+
+        node->Name = ReadLTString();
+        node->Index = m_Buffer->GetU2();
+        node->Flags = m_Buffer->GetU1();
+        m_Buffer->CopyAndAdvance(&bindMatrix, sizeof(LTABC::LTMatrix));
+        node->BindMatrix = node->InvBindMatrix = LTABC::LTMatrix2aiMatrix(bindMatrix);
+        node->InvBindMatrix.Inverse();
+        node->ChildCount = m_Buffer->GetU4();
+
+        if (!childStack.empty()) {
+            const auto& parentNode = m_Nodes[childStack.back()];
+            node->Parent = parentNode;
+            if (parentNode) {
+                childStack.pop_back();
+            }
+        }
+
+        childStack.insert(childStack.end(), node->ChildCount, node->Index);
+
+        m_Nodes.push_back(node);
+    }
+
+    return true;
+}
 
 bool LTABCImporter::BuildMesh() const {
     m_Scene->mNumMeshes = m_PieceHeader->PieceCount;
     m_Scene->mMeshes = new aiMesh *[m_PieceHeader->PieceCount];
 
+    struct BoneData {
+        LTABC::Node* LTNode;
+        aiNode* boneNode{};
+    };
+
+    auto pieceRoot = new aiNode("<Piece Root>");
+    auto nodeRoot = new aiNode("<Node Root>");
+
     auto meshIdx = 0;
+
+    std::map<int, aiMaterial*> materials;
+    std::vector<aiNode*> boneNodes;
+    std::vector<BoneData> bones;
+    std::vector<int> childStack;
+
+    for (const auto& node : m_Nodes) {
+        auto* boneNode = new aiNode(node->Name);
+
+        boneNode->mTransformation = node->BindMatrix;
+
+        // Set our parent, this is also where we'll be undoing the absolute positioning
+        if (node->Parent) {
+            auto parentNode = boneNodes[node->Parent->Index];
+            parentNode->addChildren(1, &boneNode);
+            boneNode->mParent = parentNode;
+
+            auto parentInv = node->Parent->InvBindMatrix;
+            boneNode->mTransformation = parentInv * boneNode->mTransformation;
+        }
+
+        // If we have no bone nodes, then set our parent to the bone root
+        if (boneNodes.empty()) {
+            nodeRoot->addChildren(1, &boneNode);
+            boneNode->mParent = nodeRoot;
+        }
+
+
+        boneNode->mMetaData = new aiMetadata();
+        boneNode->mMetaData->Add("index", static_cast<uint64_t>(node->Index));
+        boneNode->mMetaData->Add("flags", static_cast<uint64_t>(node->Flags));
+        boneNode->mMetaData->Add("child_count", static_cast<uint64_t>(node->ChildCount));
+
+        auto tmp = BoneData();
+        tmp.boneNode = boneNode;
+        tmp.LTNode = node;
+        bones.push_back(tmp);
+        boneNodes.push_back(boneNode);
+    }
+
     for (auto piece : m_PieceHeader->Pieces) {
         auto lod = piece.LODs[0];
         auto mesh = new aiMesh();
+        auto pieceNode = new aiNode(piece.Name);
 
         mesh->mName = piece.Name;
         mesh->mPrimitiveTypes = aiPrimitiveType_TRIANGLE;
@@ -174,40 +268,129 @@ bool LTABCImporter::BuildMesh() const {
         mesh->mNumFaces = lod.FaceCount;
         mesh->mFaces = new aiFace[lod.FaceCount];
 
-        mesh->mNumVertices = lod.VertexCount;
+        mesh->mNumVertices = lod.FaceCount * 3;
 
-        mesh->mVertices = new aiVector3D[lod.VertexCount];
-        mesh->mNormals = new aiVector3D[lod.VertexCount];
+        mesh->mVertices = new aiVector3D[mesh->mNumVertices];
+        mesh->mNormals = new aiVector3D[mesh->mNumVertices];
 
-        mesh->mTextureCoords[0] = new aiVector3D[lod.FaceCount];
-        mesh->mNumUVComponents[0] = lod.FaceCount;
+        mesh->mTextureCoords[0] = new aiVector3D[mesh->mNumVertices];
+        mesh->mNumUVComponents[0] = 2;
 
-        for (int i = 0; i < static_cast<int32_t>(lod.FaceCount); ++i) {
-            // Vertex indices
+        mesh->mMaterialIndex = piece.MaterialIndex;
+        if (!materials.count(piece.MaterialIndex)) {
+            auto shading = aiShadingMode_Phong;  // Should be aiShadingMode_Gouraud, but I don't know if shininess keys will stick without it.
+            auto mat = new aiMaterial();
+            mat->AddProperty(&piece.SpecularScale, 1, AI_MATKEY_SHININESS);
+            mat->AddProperty(&piece.SpecularPower, 1, AI_MATKEY_SHININESS_STRENGTH);
+            mat->AddProperty(&shading, 1, AI_MATKEY_SHADING_MODEL);
+            materials[piece.MaterialIndex] = mat;
+        }
+
+        struct VertData {
+            aiVector3D verts = {};
+            aiVector3D normals = {};
+            aiVector3D uvs = {};
+        };
+
+        std::map<int, VertData> duplicateVertData = {};
+        std::map<int, std::vector<aiVertexWeight>> pieceWeights = {};
+
+        auto currentIndex = 0;
+
+        // Loop through the list of faces, and then face vertices [Vertex Index, UV] to do a first pass on any
+        // currently unique vertex indexes, and store any subsequent non-unique vertex indexes for a second pass below.
+        for (auto i = 0; i < static_cast<int>(lod.FaceCount); i++) {
             mesh->mFaces[i].mNumIndices = 3;
-            mesh->mFaces[i].mIndices = new unsigned int[mesh->mFaces[i].mNumIndices];
-            mesh->mFaces[i].mIndices[0] = lod.Faces[i].Vertices[0].VertexIndex;
-            mesh->mFaces[i].mIndices[1] = lod.Faces[i].Vertices[1].VertexIndex;
-            mesh->mFaces[i].mIndices[2] = lod.Faces[i].Vertices[2].VertexIndex;
+            mesh->mFaces[i].mIndices = new unsigned int[3];
 
-            // Texcoords
-            mesh->mTextureCoords[0][i] = aiVector3D(lod.Faces[i].Vertices->TexCoord.u, lod.Faces[i].Vertices->TexCoord.v, 0.0f);
+            for (auto v = 0; v < 3; v++) {
+                const auto &face = lod.Faces[i].Vertices[v];
+                const auto &vertex = lod.Vertices[face.VertexIndex];
+
+                if (duplicateVertData.count(face.VertexIndex)) {
+                    // Duplicate vertex data
+                    auto newVertexIndex = static_cast<int>(lod.VertexCount) - 1 + static_cast<int>(duplicateVertData.size()) - 1;
+
+                    duplicateVertData[newVertexIndex] = {
+                        aiVector3D(vertex.Location.x, vertex.Location.y, vertex.Location.z),
+                        aiVector3D(vertex.Normal.x, vertex.Normal.y, vertex.Normal.z),
+                        aiVector3D(face.TexCoord.u, face.TexCoord.v, 0.0f),
+                    };
+                    mesh->mFaces[i].mIndices[v] = newVertexIndex;
+                } else {
+                    mesh->mFaces[i].mIndices[v] = currentIndex;
+                    mesh->mVertices[currentIndex] = aiVector3D(vertex.Location.x, vertex.Location.y, vertex.Location.z);
+                    mesh->mNormals[currentIndex] = aiVector3D(vertex.Normal.x, vertex.Normal.y, vertex.Normal.z);
+                    mesh->mTextureCoords[0][currentIndex] = aiVector3D(face.TexCoord.u, face.TexCoord.v, 0.0f);
+                    currentIndex++;
+                }
+
+                for (auto w = 0; w < vertex.WeightCount; w++) {
+                    int nodeIndex = static_cast<int>(vertex.Weights[w].NodeIndex);
+                    pieceWeights[nodeIndex].emplace_back(mesh->mFaces[i].mIndices[v], vertex.Weights[w].Bias);
+                }
+            }
         }
 
-        for (int i = 0; i < static_cast<int32_t>(lod.VertexCount); ++i) {
-            mesh->mVertices[i] = aiVector3D(lod.Vertices[i].Location.x, lod.Vertices[i].Location.y, lod.Vertices[i].Location.z);
-            mesh->mNormals[i] = aiVector3D(lod.Vertices[i].Normal.x, lod.Vertices[i].Normal.y, lod.Vertices[i].Normal.z);
+        // Now we can insert any non-unique vertex indexes.
+        for (const auto& [idx, vertexData] : duplicateVertData) {
+            mesh->mVertices[currentIndex] = vertexData.verts;
+            mesh->mNormals[currentIndex] = vertexData.normals;
+            mesh->mTextureCoords[0][currentIndex] = vertexData.uvs;
+            currentIndex++;
         }
+
+        mesh->mNumBones = bones.size();
+        mesh->mBones = new aiBone *[mesh->mNumBones];
+
+        for (auto idx = 0; idx < static_cast<int>(bones.size()); idx++) {
+            auto bone = new aiBone();
+            const auto &boneData = bones[idx];
+
+            // Not in the weight list? Create an empty bone instead.
+            if (!pieceWeights.count(idx)) {
+                bone->mName = boneData.LTNode->Name;
+                bone->mWeights = nullptr;
+                bone->mOffsetMatrix = boneData.LTNode->InvBindMatrix;
+                bone->mNumWeights = 0;
+                mesh->mBones[idx] = bone;
+                continue;
+            }
+
+            const auto& weightList = pieceWeights[idx];
+            bone->mNode = boneData.boneNode;
+            bone->mName = boneData.LTNode->Name;
+            bone->mOffsetMatrix = boneData.LTNode->InvBindMatrix;
+            bone->mNumWeights = weightList.size();
+            bone->mWeights = new aiVertexWeight[bone->mNumWeights];
+            std::copy(weightList.begin(), weightList.end(), bone->mWeights);
+            mesh->mBones[idx] = bone;
+        }
+
+
+        pieceNode->mMeshes = new unsigned int[1];
+        pieceNode->mMeshes[0] = meshIdx;
+        pieceNode->mNumMeshes = 1;
+        pieceRoot->addChildren(1, &pieceNode);
+        pieceNode->mParent = pieceRoot;
 
         m_Scene->mMeshes[meshIdx] = mesh;
         meshIdx++;
     }
 
-    m_Scene->mRootNode->mNumMeshes = m_Scene->mNumMeshes;
-    m_Scene->mRootNode->mMeshes = new unsigned int[m_Scene->mNumMeshes];
-    for (unsigned int i = 0; i < m_Scene->mNumMeshes; ++i) {
-        m_Scene->mRootNode->mMeshes[i] = i;
+    m_Scene->mRootNode->addChildren(1, &pieceRoot);
+    m_Scene->mRootNode->addChildren(1, &nodeRoot);
+    pieceRoot->mParent = m_Scene->mRootNode;
+    nodeRoot->mParent = m_Scene->mRootNode;
+
+    // Add the materials we've collected to the scene
+    m_Scene->mMaterials = new aiMaterial *[materials.size()];
+    m_Scene->mNumMaterials = materials.size();
+    for (const auto& [idx, mat] : materials) {
+        ai_assert(idx < static_cast<int>(m_Scene->mNumMaterials));
+        m_Scene->mMaterials[idx] = mat;
     }
+
     return true;
 }
 
@@ -215,6 +398,9 @@ std::string LTABCImporter::ReadLTString() {
     CheckBuffer();
 
     const uint16_t len = m_Buffer->GetU2();
+
+    // Sanity check
+    ai_assert(len < 1024);
 
     // Don't even try to read an empty string...
     if (len == 0) {

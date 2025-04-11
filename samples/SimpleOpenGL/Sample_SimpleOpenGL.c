@@ -351,6 +351,7 @@ int loadasset (const char* path)
 		scene_center.z = (scene_min.z + scene_max.z) / 2.0f;
 		return 0;
 	}
+
 	return 1;
 }
 
