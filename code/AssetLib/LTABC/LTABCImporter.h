@@ -188,6 +188,7 @@ struct Header {
     std::string CommandString;
     float InternalRadius;
     uint32_t LODDistanceCount;
+    std::vector<float> LODDistances;
 };
 
 struct FaceVertex {
