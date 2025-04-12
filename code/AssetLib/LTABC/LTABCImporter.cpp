@@ -2,11 +2,12 @@
 // Created by melissaa on 09/04/25.
 //
 
-#include "assimp/Exporter.hpp"
-#include "assimp/scene.h"
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 #include "LTABCImporter.h"
+#include "assimp/Exporter.hpp"
 #include "assimp/IOSystem.hpp"
+#include "assimp/scene.h"
+
 
 namespace Assimp {
 static constexpr aiImporterDesc desc = {
@@ -104,10 +105,12 @@ void Assimp::LTABCImporter::InternReadFile(const std::string &pFile, aiScene *pS
 
     // Build the mesh and all
     ai_assert(BuildMesh());
-
+#ifdef LTABC_TESTING
     std::string out = std::string(pFile + ".gltf");
     ::Assimp::Exporter exporter;
     exporter.Export(m_Scene, "gltf2", out);
+    exit(0);
+#endif
 }
 
 bool LTABCImporter::ReadPieces() {
@@ -306,6 +309,11 @@ bool LTABCImporter::BuildMesh() const {
             for (auto v = 0; v < 3; v++) {
                 const auto &face = lod.Faces[i].Vertices[v];
                 const auto &vertex = lod.Vertices[face.VertexIndex];
+                auto texCoords = face.TexCoord;
+
+                // Correct uv coordinates
+                texCoords.u = 1.0f - (-texCoords.u + 1.0f);
+                texCoords.v = 1.0f - (texCoords.v);
 
                 if (duplicateVertData.count(face.VertexIndex)) {
                     // Duplicate vertex data
@@ -314,14 +322,14 @@ bool LTABCImporter::BuildMesh() const {
                     duplicateVertData[newVertexIndex] = {
                         aiVector3D(vertex.Location.x, vertex.Location.y, vertex.Location.z),
                         aiVector3D(vertex.Normal.x, vertex.Normal.y, vertex.Normal.z),
-                        aiVector3D(face.TexCoord.u, face.TexCoord.v, 0.0f),
+                        aiVector3D(texCoords.u, texCoords.v, 0.0f),
                     };
                     mesh->mFaces[i].mIndices[v] = newVertexIndex;
                 } else {
                     mesh->mFaces[i].mIndices[v] = currentIndex;
                     mesh->mVertices[currentIndex] = aiVector3D(vertex.Location.x, vertex.Location.y, vertex.Location.z);
                     mesh->mNormals[currentIndex] = aiVector3D(vertex.Normal.x, vertex.Normal.y, vertex.Normal.z);
-                    mesh->mTextureCoords[0][currentIndex] = aiVector3D(face.TexCoord.u, face.TexCoord.v, 0.0f);
+                    mesh->mTextureCoords[0][currentIndex] = aiVector3D(texCoords.u, texCoords.v, 0.0f);
                     currentIndex++;
                 }
 
