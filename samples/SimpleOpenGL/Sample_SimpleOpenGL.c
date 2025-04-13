@@ -342,7 +342,13 @@ int loadasset (const char* path)
 {
 	/* we are taking one of the postprocessing presets to avoid
 	   spelling out 20+ single postprocessing flags here. */
-	scene = aiImportFile(path,aiProcessPreset_TargetRealtime_MaxQuality);
+	//scene = aiImportFile(path,aiProcessPreset_TargetRealtime_MaxQuality);
+    struct aiPropertyStore *props = aiCreatePropertyStore();
+    //aiSetImportPropertyInteger(props, AI_CONFIG_GLOB_MEASURE_TIME, 1);
+
+    scene = aiImportFileExWithProperties(path, aiProcessPreset_TargetRealtime_MaxQuality, NULL, props);
+
+    aiReleasePropertyStore(props);
 
 	if (scene) {
 		get_bounding_box(&scene_min,&scene_max);
@@ -351,6 +357,7 @@ int loadasset (const char* path)
 		scene_center.z = (scene_min.z + scene_max.z) / 2.0f;
 		return 0;
 	}
+
 
 	return 1;
 }
@@ -403,12 +410,13 @@ int main(int argc, char **argv)
 	   it to the logging system. It remains active for all further
 	   calls to aiImportFile(Ex) and aiApplyPostProcessing. */
 	stream = aiGetPredefinedLogStream(aiDefaultLogStream_STDOUT,NULL);
+    aiEnableVerboseLogging(1);
 	aiAttachLogStream(&stream);
 
 	/* ... same procedure, but this stream now writes the
 	   log messages to assimp_log.txt */
-	stream = aiGetPredefinedLogStream(aiDefaultLogStream_FILE,"assimp_log.txt");
-	aiAttachLogStream(&stream);
+	//stream = aiGetPredefinedLogStream(aiDefaultLogStream_FILE,"assimp_log.txt");
+	//aiAttachLogStream(&stream);
 
 	// Load the model file.
 	if(0 != loadasset(model_file)) {

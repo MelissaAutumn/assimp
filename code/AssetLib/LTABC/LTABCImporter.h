@@ -49,6 +49,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "assimp/StreamReader.h"
 #include <assimp/BaseImporter.h>
 #include <assimp/ParsingUtils.h>
+#include <assimp/Profiler.h>
 
 #include <vector>
 
@@ -61,7 +62,7 @@ namespace Assimp {
 class ASSIMP_API LTABCImporter : public BaseImporter {
 public:
     LTABCImporter() :
-            m_FileSize(0), m_Buffer(nullptr), m_MeshVersion(0), m_Scene(nullptr), m_MeshHeader(nullptr), m_PieceHeader(nullptr) {};
+            m_FileSize(0), m_Buffer(nullptr), m_MeshVersion(0), m_Scene(nullptr), m_MeshHeader(nullptr), m_PieceHeader(nullptr), m_Profiler(nullptr) {};
     ~LTABCImporter() override;
 
     bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const override;
@@ -113,6 +114,7 @@ private:
     std::vector<LTABC::Socket *> m_Sockets;
     std::vector<LTABC::AnimBinding *> m_AnimationBindings;
     std::vector<LTABC::AnimBinding *> m_ChildModelAnimationBindings;
+    Profiling::Profiler* m_Profiler;
 };
 
 } // namespace Assimp

@@ -38,13 +38,30 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------
 */
+#include "assimp/Profiler.h"
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 #include "LTABCImporter.h"
 #include "assimp/Exporter.hpp"
 #include "assimp/IOSystem.hpp"
 #include "assimp/scene.h"
 
-#define LTABC_TESTING
+//#define LTABC_TESTING
+#define LTABC_RESERVE_VECTORS
+#define LTABC_PROFILE
+
+#ifdef LTABC_PROFILE
+#define LTABC_PERF_BEGIN(name) m_Profiler->BeginRegion(name)
+#define LTABC_PERF_END(name) m_Profiler->EndRegion(name)
+#else
+#define LTABC_PERF_BEGIN(name)
+#define LTABC_PERF_END(name)
+#endif
+
+#ifdef _DEBUG
+#define ltabc_assert(expr) ai_assert(expr)
+#else
+#define ltabc_assert(expr) expr
+#endif
 
 namespace Assimp {
 static constexpr aiImporterDesc desc = {
@@ -116,6 +133,11 @@ const aiImporterDesc *Assimp::LTABCImporter::GetInfo() const {
 }
 
 void Assimp::LTABCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) {
+#ifdef LTABC_PROFILE
+    m_Profiler = new Profiling::Profiler();
+#endif
+    LTABC_PERF_BEGIN("InternReadFile");
+
     std::unique_ptr<IOStream> pStream(pIOHandler->Open(pFile, "rb"));
 
     // Check whether we can read from the file
@@ -137,6 +159,8 @@ void Assimp::LTABCImporter::InternReadFile(const std::string &pFile, aiScene *pS
 
         auto sectionName = ReadLTString();
         nextSectionOffset = m_Buffer->GetI4();
+
+        LTABC_PERF_BEGIN(sectionName);
 
         if (sectionName == LTABC::SECTION_HEADER) {
             auto ioHeader = m_Buffer->Get<LTABC::IOHeader>();
@@ -162,21 +186,30 @@ void Assimp::LTABCImporter::InternReadFile(const std::string &pFile, aiScene *pS
             // Load-up the header
             m_MeshHeader->LoadHeader(ioHeader, commandString, internalRadius, lodDistanceCount, unkV13Value);
         } else if (sectionName == LTABC::SECTION_PIECES) {
-            ai_assert(ReadPieces());
+            ltabc_assert(ReadPieces());
         } else if (sectionName == LTABC::SECTION_NODES) {
-            ai_assert(ReadNodes());
-            ai_assert(ReadWeightSets());
+            ltabc_assert(ReadNodes());
+            ltabc_assert(ReadWeightSets());
         } else if (sectionName == LTABC::SECTION_CHILD_MODELS) {
-            ai_assert(ReadChildModels());
+            ltabc_assert(ReadChildModels());
         } else if (sectionName == LTABC::SECTION_ANIMATIONS) {
-            ai_assert(ReadAnimations());
+            ltabc_assert(ReadAnimations());
+        } else if (sectionName == LTABC::SECTION_SOCKETS) {
+            ltabc_assert(ReadSockets());
         } else if (sectionName == LTABC::SECTION_ANIM_BINDINGS) {
-            ai_assert(ReadAnimationBindings());
+            ltabc_assert(ReadAnimationBindings());
         }
+
+        LTABC_PERF_END(sectionName);
     }
 
+    LTABC_PERF_BEGIN("BuildMesh");
+
     // Build the mesh and all
-    ai_assert(BuildMesh());
+    ltabc_assert(BuildMesh());
+
+    LTABC_PERF_END("BuildMesh");
+    LTABC_PERF_END("InternReadFile");
 #ifdef LTABC_TESTING
     std::string out = std::string(pFile + ".gltf");
     ::Assimp::Exporter exporter;
@@ -192,6 +225,9 @@ bool LTABCImporter::ReadPieces() {
     m_PieceHeader->WeightCount = m_Buffer->GetI4();
     m_PieceHeader->PieceCount = m_Buffer->GetI4();
 
+#ifdef LTABC_RESERVE_VECTORS
+    m_PieceHeader->Pieces.reserve(m_PieceHeader->PieceCount);
+#endif
     for (auto i = 0; i < static_cast<int32_t>(m_PieceHeader->PieceCount); ++i) {
         LTABC::Piece piece = {};
         piece.MaterialIndex = m_Buffer->GetU2();
@@ -201,26 +237,41 @@ bool LTABCImporter::ReadPieces() {
         piece.Unknown = m_Buffer->GetU2();
         piece.Name = ReadLTString();
 
+#ifdef LTABC_RESERVE_VECTORS
+        piece.LODs.reserve(m_MeshHeader->LODCount);
+#endif
         for (auto l = 0; l < static_cast<int32_t>(m_MeshHeader->LODCount); ++l) {
             LTABC::LOD lod = {};
 
             lod.FaceCount = m_Buffer->GetU4();
+
+#ifdef WITH_NO_PADDING_SUPPORTED
+            lod.Faces = new LTABC::Face[lod.FaceCount];
+            m_Buffer->CopyAndAdvance(lod.Faces, sizeof(LTABC::Face) * lod.FaceCount);
+#else WITH_NO_PADDING_SUPPORTED
             for (auto f = 0; f < static_cast<int32_t>(lod.FaceCount); ++f) {
                 LTABC::Face face = {};
                 // Struct is padded to 12 bytes, but this is tightly packed.
                 m_Buffer->CopyAndAdvance(&face.Vertices[0], /*sizeof(LTABC::FaceVertex)*/ 10);
                 m_Buffer->CopyAndAdvance(&face.Vertices[1], /*sizeof(LTABC::FaceVertex)*/ 10);
                 m_Buffer->CopyAndAdvance(&face.Vertices[2], /*sizeof(LTABC::FaceVertex)*/ 10);
-                lod.Faces.push_back(face);
+                lod.Faces[f] = face;
             }
+#endif
 
             lod.VertexCount = m_Buffer->GetU4();
+#ifdef LTABC_RESERVE_VECTORS
+            lod.Vertices.reserve(lod.VertexCount);
+#endif
             for (auto v = 0; v < static_cast<int32_t>(lod.VertexCount); ++v) {
                 LTABC::Vertex vertex = {};
 
                 vertex.WeightCount = m_Buffer->GetU2();
                 vertex.SubLODVertexIndex = m_Buffer->GetU2();
 
+#ifdef LTABC_RESERVE_VECTORS
+                vertex.Weights.reserve(vertex.WeightCount);
+#endif
                 for (auto w = 0; w < static_cast<int32_t>(vertex.WeightCount); w++) {
                     LTABC::Weight weight = {};
                     m_Buffer->CopyAndAdvance(&weight, sizeof(LTABC::Weight));
@@ -251,6 +302,9 @@ bool LTABCImporter::ReadNodes() {
 
     // Read in the list of nodes and while we're doing that construct links to parent->child and a few more handy things
     std::vector<int> childStack = {};
+#ifdef LTABC_RESERVE_VECTORS
+    childStack.reserve(m_MeshHeader->NodeCount);
+#endif
     for (auto i = 0; i < static_cast<int>(m_MeshHeader->NodeCount); i++) {
         auto *node = new LTABC::Node();
         LTABC::LTMatrix bindMatrix = {};
@@ -282,6 +336,9 @@ bool LTABCImporter::ReadWeightSets() {
     CheckBuffer();
 
     uint32_t weightSetCount = m_Buffer->GetU4();
+#ifdef LTABC_RESERVE_VECTORS
+    m_WeightSets.reserve(weightSetCount);
+#endif
     for (int i = 0; i < static_cast<int>(weightSetCount); ++i) {
         auto weightSet = new LTABC::WeightSet();
         weightSet->Name = ReadLTString();
@@ -298,6 +355,9 @@ bool LTABCImporter::ReadChildModels() {
     CheckBuffer();
 
     uint16_t childCount = m_Buffer->GetU2();
+#ifdef LTABC_RESERVE_VECTORS
+    m_ChildModels.reserve(childCount);
+#endif
     for (int i = 0; i < static_cast<int>(childCount); ++i) {
         auto childModel = new LTABC::ChildModel();
         childModel->Name = ReadLTString(); // Will be blank for "self"
@@ -317,6 +377,9 @@ bool LTABCImporter::ReadAnimations() {
     CheckBuffer();
 
     uint32_t animCount = m_Buffer->GetU4();
+#ifdef LTABC_RESERVE_VECTORS
+    m_Animations.reserve(animCount);
+#endif
     for (int i = 0; i < static_cast<int>(animCount); ++i) {
         auto animation = new LTABC::Animation();
         m_Buffer->CopyAndAdvance(&animation->Extents, sizeof(animation->Extents));
@@ -345,6 +408,9 @@ bool LTABCImporter::ReadSockets() {
     CheckBuffer();
 
     uint32_t socketCount = m_Buffer->GetU4();
+#ifdef LTABC_RESERVE_VECTORS
+    m_Sockets.reserve(socketCount);
+#endif
     for (int i = 0; i < static_cast<int>(socketCount); ++i) {
         auto socket = new LTABC::Socket();
         socket->NodeIndex = m_Buffer->GetU4();
@@ -361,6 +427,9 @@ bool LTABCImporter::ReadAnimationBindings() {
     CheckBuffer();
 
     uint32_t animBindingCount = m_Buffer->GetU4();
+#ifdef LTABC_RESERVE_VECTORS
+    m_AnimationBindings.reserve(animBindingCount);
+#endif
     for (int i = 0; i < static_cast<int>(animBindingCount); ++i) {
         auto animBinding = new LTABC::AnimBinding();
         animBinding->Name = ReadLTString();
@@ -372,6 +441,9 @@ bool LTABCImporter::ReadAnimationBindings() {
     // TODO: Clean this up
     if (m_MeshHeader->ChildModelCount > 1) {
         uint32_t childAnimBindingCount = m_Buffer->GetU4();
+#ifdef LTABC_RESERVE_VECTORS
+        m_ChildModelAnimationBindings.reserve(childAnimBindingCount);
+#endif
         for (int i = 0; i < static_cast<int>(childAnimBindingCount); ++i) {
             auto animBinding = new LTABC::AnimBinding();
             animBinding->Name = ReadLTString();
@@ -389,14 +461,19 @@ bool LTABCImporter::BuildMesh() const {
     m_Scene->mMeshes = new aiMesh *[m_Scene->mNumMeshes];
 
     struct BoneData {
-        LTABC::Node *LTNode;
+        LTABC::Node *LTNode = nullptr;
         aiNode *boneNode{};
+    };
+    struct VertData {
+        aiVector3D verts = {};
+        aiVector3D normals = {};
+        aiVector3D uvs = {};
     };
 
     auto headerRoot = new aiNode("<Header Root>");
     auto pieceRoot = new aiNode("<Piece Root>");
     auto nodeRoot = new aiNode("<Node Root>");
-    // auto socketRoot = new aiNode("<Socket Root>");
+    auto weightSetRoot = new aiNode("<WeightSet Root>");
 
     auto meshIdx = 0;
 
@@ -413,6 +490,7 @@ bool LTABCImporter::BuildMesh() const {
 
     m_Scene->mRootNode->addChildren(1, &headerRoot);
 
+    LTABC_PERF_BEGIN("Building Nodes");
     for (const auto &node : m_Nodes) {
         auto *boneNode = new aiNode(node->Name);
 
@@ -445,7 +523,53 @@ bool LTABCImporter::BuildMesh() const {
         bones.push_back(tmp);
         boneNodes.push_back(boneNode);
     }
+    LTABC_PERF_END("Building Nodes");
 
+    LTABC_PERF_BEGIN("Building Sockets");
+    for (const auto &socket : m_Sockets) {
+        ai_assert(socket->NodeIndex < boneNodes.size());
+
+        auto socketNode = new aiNode();
+        const auto boneNode = boneNodes[socket->NodeIndex];
+
+        socketNode->mName = socket->Name;
+        socketNode->mTransformation = aiMatrix4x4(aiVector3d(1.0f), LTABC::LTRotation2aiQuaternion(socket->Rotation), LTABC::LTVector2aiVector(socket->Location));
+
+        boneNode->addChildren(1, &socketNode);
+        socketNode->mParent = boneNode;
+    }
+    LTABC_PERF_END("Building Sockets");
+
+
+    LTABC_PERF_BEGIN("Building WeightSets");
+    // Mainly a metadata node, I'm not sure how to otherwise implement this within assimp.
+    for (const auto &weightSet : m_WeightSets) {
+        ai_assert(weightSet->NodeCount <= boneNodes.size());
+        ai_assert(weightSet->Name.size() < 256);
+
+        auto weightSetNode = new aiNode();
+        weightSetNode->mName = weightSet->Name;
+
+        for (int i = 0; i < static_cast<int>(weightSet->NodeCount); ++i) {
+            auto childNode = new aiNode();
+
+            char nameBuffer[256];
+            std::sprintf(nameBuffer, "WS_%s_%d", weightSet->Name.c_str(), i);
+            childNode->mName = nameBuffer;
+
+            childNode->mMetaData = new aiMetadata();
+            childNode->mMetaData->Add("node_weight", weightSet->NodeWeights[i]);
+
+            weightSetNode->addChildren(1, &childNode);
+            childNode->mParent = weightSetNode;
+        }
+
+        weightSetRoot->addChildren(1, &weightSetNode);
+        weightSetNode->mParent = weightSetRoot;
+    }
+    LTABC_PERF_END("Building WeightSets");
+
+    LTABC_PERF_BEGIN("Building Pieces");
     for (auto piece : m_PieceHeader->Pieces) {
         auto lodIdx = 0;
         for (const auto &lod : piece.LODs) {
@@ -483,12 +607,6 @@ bool LTABCImporter::BuildMesh() const {
                 mat->AddProperty(&shading, 1, AI_MATKEY_SHADING_MODEL);
                 materials[piece.MaterialIndex] = mat;
             }
-
-            struct VertData {
-                aiVector3D verts = {};
-                aiVector3D normals = {};
-                aiVector3D uvs = {};
-            };
 
             std::map<int, VertData> duplicateVertData = {};
             std::map<int, std::vector<aiVertexWeight>> pieceWeights = {};
@@ -575,7 +693,7 @@ bool LTABCImporter::BuildMesh() const {
             pieceNode->mMetaData->Add("lod_index", lodIdx);
 
             // First lod doesn't contain a distance, but we should add one for consistency.
-            if (lodIdx > 0) {
+            if (lodIdx == 0) {
                 pieceNode->mMetaData->Add("lod_distance", 0.0f);
             } else {
                 pieceNode->mMetaData->Add("lod_distance", m_MeshHeader->LODDistances[lodIdx - 1]);
@@ -592,12 +710,9 @@ bool LTABCImporter::BuildMesh() const {
             lodIdx++;
         }
     }
+    LTABC_PERF_END("Building Pieces");
 
-    m_Scene->mRootNode->addChildren(1, &pieceRoot);
-    m_Scene->mRootNode->addChildren(1, &nodeRoot);
-    pieceRoot->mParent = m_Scene->mRootNode;
-    nodeRoot->mParent = m_Scene->mRootNode;
-
+    LTABC_PERF_BEGIN("Building Materials");
     // Add the materials we've collected to the scene
     m_Scene->mMaterials = new aiMaterial *[materials.size()];
     m_Scene->mNumMaterials = materials.size();
@@ -605,6 +720,16 @@ bool LTABCImporter::BuildMesh() const {
         ai_assert(idx < static_cast<int>(m_Scene->mNumMaterials));
         m_Scene->mMaterials[idx] = mat;
     }
+    LTABC_PERF_END("Building Materials");
+
+    LTABC_PERF_BEGIN("Adding RootNodes");
+    m_Scene->mRootNode->addChildren(1, &weightSetRoot);
+    m_Scene->mRootNode->addChildren(1, &pieceRoot);
+    m_Scene->mRootNode->addChildren(1, &nodeRoot);
+    pieceRoot->mParent = m_Scene->mRootNode;
+    nodeRoot->mParent = m_Scene->mRootNode;
+    weightSetRoot->mParent = m_Scene->mRootNode;
+    LTABC_PERF_END("Adding RootNodes");
 
     return true;
 }

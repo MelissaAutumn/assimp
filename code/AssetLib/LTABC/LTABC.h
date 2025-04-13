@@ -49,6 +49,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace Assimp {
 namespace LTABC {
 
+
+#if defined( __GNUC__ )
+#define WITH_NO_PADDING_SUPPORTED
+#define WITH_NO_PADDING  __attribute__((packed))
+#else
+#define WITH_NO_PADDING
+#endif
+
+
 constexpr auto SECTION_HEADER = "Header";
 constexpr auto SECTION_PIECES = "Pieces";
 constexpr auto SECTION_NODES = "Nodes";
@@ -101,6 +110,18 @@ inline aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat) {
         ltMat.m[3].y,
         ltMat.m[3].z,
         ltMat.m[3].w,
+    };
+}
+
+inline aiVector3d LTVector2aiVector(LTVector ltVec) {
+    return {
+        ltVec.x, ltVec.y, ltVec.z
+    };
+}
+
+inline aiQuaternion LTRotation2aiQuaternion(LTRotation ltRot) {
+    return {
+        ltRot.x, ltRot.y, ltRot.z, ltRot.w
     };
 }
 
@@ -186,11 +207,11 @@ struct Header {
 struct FaceVertex {
     LTTexCoord TexCoord;
     uint16_t VertexIndex;
-};
+} WITH_NO_PADDING;
 
 struct Face {
     FaceVertex Vertices[3];
-};
+} WITH_NO_PADDING;
 
 struct Weight {
     uint32_t NodeIndex;
@@ -208,7 +229,8 @@ struct Vertex {
 
 struct LOD {
     uint32_t FaceCount;
-    std::vector<Face> Faces; //[FaceCount] <optimize=false>;
+    Face* Faces;
+    //std::vector<Face> Faces; //[FaceCount] <optimize=false>;
     uint32_t VertexCount;
     std::vector<Vertex> Vertices; //[VertexCount] <optimize=false>;
 };
