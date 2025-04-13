@@ -1,13 +1,50 @@
-//
-// Created by melissaa on 09/04/25.
-//
+/*
+Open Asset Import Library (assimp)
+----------------------------------------------------------------------
 
+Copyright (c) 2006-2025, assimp team
+
+All rights reserved.
+
+Redistribution and use of this software in source and binary forms,
+with or without modification, are permitted provided that the
+following conditions are met:
+
+* Redistributions of source code must retain the above
+copyright notice, this list of conditions and the
+following disclaimer.
+
+* Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the
+following disclaimer in the documentation and/or other
+materials provided with the distribution.
+
+* Neither the name of the assimp team, nor the names of its
+contributors may be used to endorse or promote products
+derived from this software without specific prior
+written permission of the assimp team.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------
+*/
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 #include "LTABCImporter.h"
 #include "assimp/Exporter.hpp"
 #include "assimp/IOSystem.hpp"
 #include "assimp/scene.h"
 
+#define LTABC_TESTING
 
 namespace Assimp {
 static constexpr aiImporterDesc desc = {
@@ -27,6 +64,24 @@ LTABCImporter::~LTABCImporter() {
     delete m_Buffer;
     delete m_MeshHeader;
     delete m_PieceHeader;
+    for (const auto ptr : m_Nodes) {
+        delete ptr;
+    }
+    for (const auto ptr : m_ChildModels) {
+        delete ptr;
+    }
+    for (const auto ptr : m_Animations) {
+        delete ptr;
+    }
+    for (const auto ptr : m_Sockets) {
+        delete ptr;
+    }
+    for (const auto ptr : m_AnimationBindings) {
+        delete ptr;
+    }
+    for (const auto ptr : m_ChildModelAnimationBindings) {
+        delete ptr;
+    }
     m_FileSize = 0;
 }
 
@@ -80,7 +135,7 @@ void Assimp::LTABCImporter::InternReadFile(const std::string &pFile, aiScene *pS
         auto sectionName = ReadLTString();
         nextSectionOffset = m_Buffer->GetI4();
 
-        if (sectionName == SECTION_HEADER) {
+        if (sectionName == LTABC::SECTION_HEADER) {
             auto ioHeader = m_Buffer->Get<LTABC::IOHeader>();
             uint32_t unkV13Value = 0;
             m_MeshVersion = ioHeader.Version;
@@ -103,10 +158,16 @@ void Assimp::LTABCImporter::InternReadFile(const std::string &pFile, aiScene *pS
 
             // Load-up the header
             m_MeshHeader->LoadHeader(ioHeader, commandString, internalRadius, lodDistanceCount, unkV13Value);
-        } else if (sectionName == SECTION_PIECES) {
+        } else if (sectionName == LTABC::SECTION_PIECES) {
             ai_assert(ReadPieces());
-        } else if (sectionName == SECTION_NODES) {
+        } else if (sectionName == LTABC::SECTION_NODES) {
             ai_assert(ReadNodes());
+        } else if (sectionName == LTABC::SECTION_CHILD_MODELS) {
+            ai_assert(ReadChildModels());
+        } else if (sectionName == LTABC::SECTION_ANIMATIONS) {
+            ai_assert(ReadAnimations());
+        } else if (sectionName == LTABC::SECTION_ANIM_BINDINGS) {
+            ai_assert(ReadAnimationBindings());
         }
     }
 
@@ -132,7 +193,7 @@ bool LTABCImporter::ReadPieces() {
         piece.MaterialIndex = m_Buffer->GetU2();
         piece.SpecularPower = m_Buffer->GetF4();
         piece.SpecularScale = m_Buffer->GetF4();
-        piece.LODWeight = m_MeshHeader->Version > 9 ? m_Buffer->GetF4() : 0.0f;
+        piece.LODWeight = m_MeshVersion > 9 ? m_Buffer->GetF4() : 0.0f;
         piece.Unknown = m_Buffer->GetU2();
         piece.Name = ReadLTString();
 
@@ -199,7 +260,7 @@ bool LTABCImporter::ReadNodes() {
         node->ChildCount = m_Buffer->GetU4();
 
         if (!childStack.empty()) {
-            const auto& parentNode = m_Nodes[childStack.back()];
+            const auto &parentNode = m_Nodes[childStack.back()];
             node->Parent = parentNode;
             if (parentNode) {
                 childStack.pop_back();
@@ -209,6 +270,95 @@ bool LTABCImporter::ReadNodes() {
         childStack.insert(childStack.end(), node->ChildCount, node->Index);
 
         m_Nodes.push_back(node);
+    }
+
+    return true;
+}
+bool LTABCImporter::ReadChildModels() {
+    CheckBuffer();
+
+    uint16_t childCount = m_Buffer->GetU2();
+    for (int i = 0; i < static_cast<int>(childCount); ++i) {
+        auto childModel = new LTABC::ChildModel();
+        childModel->Name = ReadLTString();  // Will be blank for "self"
+        childModel->BuildNumber = m_Buffer->GetU4();
+        for (int n = 0; n < static_cast<int>(m_MeshHeader->NodeCount); ++n) {
+            auto trans = LTABC::Transform();
+            m_Buffer->CopyAndAdvance(&trans.Location, sizeof(trans.Location));
+            m_Buffer->CopyAndAdvance(&trans.Rotation, sizeof(trans.Rotation));
+            childModel->Transforms.push_back(trans);
+        }
+        m_ChildModels.push_back(childModel);
+    }
+
+    return true;
+}
+bool LTABCImporter::ReadAnimations() {
+    CheckBuffer();
+
+    uint32_t animCount = m_Buffer->GetU4();
+    for (int i = 0; i < static_cast<int>(animCount); ++i) {
+        auto animation = new LTABC::Animation();
+        m_Buffer->CopyAndAdvance(&animation->Extents, sizeof(animation->Extents));
+        animation->Name = ReadLTString();
+        animation->UnkInt = m_MeshVersion > 9 ? m_Buffer->GetU4() : 0;
+        animation->InterpolationTime = m_MeshVersion > 10 ? m_Buffer->GetU4() : 200;
+        animation->KeyFrameCount = m_Buffer->GetU4();
+        for (int k = 0; k < static_cast<int>(animation->KeyFrameCount); ++k) {
+            auto keyframe = LTABC::KeyFrame();
+            keyframe.Time = m_Buffer->GetU4();
+            keyframe.Command = ReadLTString();
+            animation->KeyFrames.push_back(keyframe);
+        }
+        for (int n = 0; n < static_cast<int>(m_MeshHeader->NodeCount); ++n) {
+            auto trans = LTABC::Transform();
+            m_Buffer->CopyAndAdvance(&trans.Location, sizeof(trans.Location));
+            m_Buffer->CopyAndAdvance(&trans.Rotation, sizeof(trans.Rotation));
+            animation->Transforms.push_back(trans);
+        }
+        m_Animations.push_back(animation);
+    }
+
+    return true;
+}
+bool LTABCImporter::ReadSockets() {
+    CheckBuffer();
+
+    uint32_t socketCount = m_Buffer->GetU4();
+    for (int i = 0; i < static_cast<int>(socketCount); ++i) {
+        auto socket = new LTABC::Socket();
+        socket->NodeIndex = m_Buffer->GetU4();
+        socket->Name = ReadLTString();
+        // Yes these are flipped compared to every other transform :shrug:
+        m_Buffer->CopyAndAdvance(&socket->Rotation, sizeof(socket->Rotation));
+        m_Buffer->CopyAndAdvance(&socket->Location, sizeof(socket->Location));
+        m_Sockets.push_back(socket);
+    }
+
+    return true;
+}
+bool LTABCImporter::ReadAnimationBindings() {
+    CheckBuffer();
+
+    uint32_t animBindingCount = m_Buffer->GetU4();
+    for (int i = 0; i < static_cast<int>(animBindingCount); ++i) {
+        auto animBinding = new LTABC::AnimBinding();
+        animBinding->Name = ReadLTString();
+        m_Buffer->CopyAndAdvance(&animBinding->Extents, sizeof(animBinding->Extents));
+        m_Buffer->CopyAndAdvance(&animBinding->Origin, sizeof(animBinding->Origin));
+        m_AnimationBindings.push_back(animBinding);
+    }
+
+    // TODO: Clean this up
+    if (m_MeshHeader->ChildModelCount > 1) {
+        uint32_t childAnimBindingCount = m_Buffer->GetU4();
+        for (int i = 0; i < static_cast<int>(childAnimBindingCount); ++i) {
+            auto animBinding = new LTABC::AnimBinding();
+            animBinding->Name = ReadLTString();
+            m_Buffer->CopyAndAdvance(&animBinding->Extents, sizeof(animBinding->Extents));
+            m_Buffer->CopyAndAdvance(&animBinding->Origin, sizeof(animBinding->Origin));
+            m_ChildModelAnimationBindings.push_back(animBinding);
+        }
     }
 
     return true;

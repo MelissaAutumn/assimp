@@ -3,6 +3,16 @@
 This importer supports [LithTech](https://en.wikipedia.org/wiki/LithTech) 2.x ABC files from version 9 throughout 
 version 13.
 
+## Versions
+
+| Game               | Version | Notes                           |
+|--------------------|---------|---------------------------------|
+| NOLF1              | v12     | v9 is used in some debug models |
+| AVP2               | v12     |                                 |
+| Might and Magic IX | v13     |                                 |
+
+
+
 ## Layout
 
 The format is loaded into nodes structured like:

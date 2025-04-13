@@ -404,6 +404,7 @@ ADD_ASSIMP_IMPORTER( IRR
 ADD_ASSIMP_IMPORTER( LTABC
   AssetLib/LTABC/LTABCImporter.cpp
   AssetLib/LTABC/LTABCImporter.h
+  AssetLib/LTABC/LTABC.h
 )
 
 ADD_ASSIMP_IMPORTER( LWO
@@ -1389,13 +1390,6 @@ IF(NOT ASSIMP_HUNTER_ENABLED)
       ../contrib/openddlparser/include
   )
 ENDIF()
-
-IF (ASSIMP_BUILD_NONFREE_C4D_IMPORTER)
-  SET( assimp_src ${assimp_src} ${C4D_SRCS}
-          AssetLib/LTABC/LTABCImporter.cpp
-          AssetLib/LTABC/LTABCImporter.h)
-  INCLUDE_DIRECTORIES(${C4D_INCLUDES})
-ENDIF ()
 
 IF (ASSIMP_BUILD_DRACO)
   INCLUDE_DIRECTORIES(${draco_INCLUDE_DIRS})
