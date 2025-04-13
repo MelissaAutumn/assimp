@@ -77,6 +77,7 @@ protected:
      */
     bool ReadPieces();
     bool ReadNodes();
+    bool ReadWeightSets();
     bool ReadChildModels();
     bool ReadAnimations();
     bool ReadSockets();
@@ -106,6 +107,7 @@ private:
     LTABC::Header *m_MeshHeader;
     LTABC::PieceHeader *m_PieceHeader;
     std::vector<LTABC::Node *> m_Nodes;
+    std::vector<LTABC::WeightSet *> m_WeightSets;
     std::vector<LTABC::ChildModel *> m_ChildModels;
     std::vector<LTABC::Animation *> m_Animations;
     std::vector<LTABC::Socket *> m_Sockets;

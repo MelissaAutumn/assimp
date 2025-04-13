@@ -67,6 +67,9 @@ LTABCImporter::~LTABCImporter() {
     for (const auto ptr : m_Nodes) {
         delete ptr;
     }
+    for (const auto ptr : m_WeightSets) {
+        delete ptr;
+    }
     for (const auto ptr : m_ChildModels) {
         delete ptr;
     }
@@ -162,6 +165,7 @@ void Assimp::LTABCImporter::InternReadFile(const std::string &pFile, aiScene *pS
             ai_assert(ReadPieces());
         } else if (sectionName == LTABC::SECTION_NODES) {
             ai_assert(ReadNodes());
+            ai_assert(ReadWeightSets());
         } else if (sectionName == LTABC::SECTION_CHILD_MODELS) {
             ai_assert(ReadChildModels());
         } else if (sectionName == LTABC::SECTION_ANIMATIONS) {
@@ -274,13 +278,29 @@ bool LTABCImporter::ReadNodes() {
 
     return true;
 }
+bool LTABCImporter::ReadWeightSets() {
+    CheckBuffer();
+
+    uint32_t weightSetCount = m_Buffer->GetU4();
+    for (int i = 0; i < static_cast<int>(weightSetCount); ++i) {
+        auto weightSet = new LTABC::WeightSet();
+        weightSet->Name = ReadLTString();
+        weightSet->NodeCount = m_Buffer->GetU4();
+        for (int n = 0; n < static_cast<int>(weightSet->NodeCount); ++n) {
+            weightSet->NodeWeights.push_back(m_Buffer->GetF4());
+        }
+        m_WeightSets.push_back(weightSet);
+    }
+
+    return true;
+}
 bool LTABCImporter::ReadChildModels() {
     CheckBuffer();
 
     uint16_t childCount = m_Buffer->GetU2();
     for (int i = 0; i < static_cast<int>(childCount); ++i) {
         auto childModel = new LTABC::ChildModel();
-        childModel->Name = ReadLTString();  // Will be blank for "self"
+        childModel->Name = ReadLTString(); // Will be blank for "self"
         childModel->BuildNumber = m_Buffer->GetU4();
         for (int n = 0; n < static_cast<int>(m_MeshHeader->NodeCount); ++n) {
             auto trans = LTABC::Transform();
@@ -369,18 +389,19 @@ bool LTABCImporter::BuildMesh() const {
     m_Scene->mMeshes = new aiMesh *[m_Scene->mNumMeshes];
 
     struct BoneData {
-        LTABC::Node* LTNode;
-        aiNode* boneNode{};
+        LTABC::Node *LTNode;
+        aiNode *boneNode{};
     };
 
     auto headerRoot = new aiNode("<Header Root>");
     auto pieceRoot = new aiNode("<Piece Root>");
     auto nodeRoot = new aiNode("<Node Root>");
+    // auto socketRoot = new aiNode("<Socket Root>");
 
     auto meshIdx = 0;
 
-    std::map<int, aiMaterial*> materials;
-    std::vector<aiNode*> boneNodes;
+    std::map<int, aiMaterial *> materials;
+    std::vector<aiNode *> boneNodes;
     std::vector<BoneData> bones;
     std::vector<int> childStack;
 
@@ -392,8 +413,8 @@ bool LTABCImporter::BuildMesh() const {
 
     m_Scene->mRootNode->addChildren(1, &headerRoot);
 
-    for (const auto& node : m_Nodes) {
-        auto* boneNode = new aiNode(node->Name);
+    for (const auto &node : m_Nodes) {
+        auto *boneNode = new aiNode(node->Name);
 
         boneNode->mTransformation = node->BindMatrix;
 
@@ -413,7 +434,6 @@ bool LTABCImporter::BuildMesh() const {
             boneNode->mParent = nodeRoot;
         }
 
-
         boneNode->mMetaData = new aiMetadata();
         boneNode->mMetaData->Add("index", static_cast<uint64_t>(node->Index));
         boneNode->mMetaData->Add("flags", static_cast<uint64_t>(node->Flags));
@@ -428,7 +448,7 @@ bool LTABCImporter::BuildMesh() const {
 
     for (auto piece : m_PieceHeader->Pieces) {
         auto lodIdx = 0;
-        for (const auto& lod : piece.LODs) {
+        for (const auto &lod : piece.LODs) {
             auto mesh = new aiMesh();
             std::string name = piece.Name;
 
@@ -516,7 +536,7 @@ bool LTABCImporter::BuildMesh() const {
             }
 
             // Now we can insert any non-unique vertex indexes.
-            for (const auto& [idx, vertexData] : duplicateVertData) {
+            for (const auto &[idx, vertexData] : duplicateVertData) {
                 mesh->mVertices[currentIndex] = vertexData.verts;
                 mesh->mNormals[currentIndex] = vertexData.normals;
                 mesh->mTextureCoords[0][currentIndex] = vertexData.uvs;
@@ -541,7 +561,7 @@ bool LTABCImporter::BuildMesh() const {
                     continue;
                 }
 
-                const auto& weightList = pieceWeights[idx];
+                const auto &weightList = pieceWeights[idx];
                 bone->mNode = boneData.boneNode;
                 bone->mName = boneData.LTNode->Name;
                 bone->mOffsetMatrix = boneData.LTNode->InvBindMatrix;
@@ -581,7 +601,7 @@ bool LTABCImporter::BuildMesh() const {
     // Add the materials we've collected to the scene
     m_Scene->mMaterials = new aiMaterial *[materials.size()];
     m_Scene->mNumMaterials = materials.size();
-    for (const auto& [idx, mat] : materials) {
+    for (const auto &[idx, mat] : materials) {
         ai_assert(idx < static_cast<int>(m_Scene->mNumMaterials));
         m_Scene->mMaterials[idx] = mat;
     }

@@ -253,6 +253,12 @@ struct Node {
     Node *Parent;
 };
 
+struct WeightSet {
+    std::string Name;
+    uint32_t NodeCount;
+    std::vector<float> NodeWeights;
+};
+
 struct ChildModel {
     std::string Name;
     uint32_t BuildNumber;
