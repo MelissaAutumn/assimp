@@ -45,7 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "assimp/IOSystem.hpp"
 #include "assimp/scene.h"
 
-//#define LTABC_TESTING
+#define LTABC_TESTING
 #define LTABC_RESERVE_VECTORS
 #define LTABC_PROFILE
 
@@ -248,7 +248,7 @@ bool LTABCImporter::ReadPieces() {
 #ifdef WITH_NO_PADDING_SUPPORTED
             lod.Faces = new LTABC::Face[lod.FaceCount];
             m_Buffer->CopyAndAdvance(lod.Faces, sizeof(LTABC::Face) * lod.FaceCount);
-#else WITH_NO_PADDING_SUPPORTED
+#else
             for (auto f = 0; f < static_cast<int32_t>(lod.FaceCount); ++f) {
                 LTABC::Face face = {};
                 // Struct is padded to 12 bytes, but this is tightly packed.
@@ -393,11 +393,23 @@ bool LTABCImporter::ReadAnimations() {
             keyframe.Command = ReadLTString();
             animation->KeyFrames.push_back(keyframe);
         }
+        if (m_MeshVersion == 13) {
+            m_Buffer->SetCurrentPos(m_Buffer->GetCurrentPos() + 4);
+        }
         for (int n = 0; n < static_cast<int>(m_MeshHeader->NodeCount); ++n) {
-            auto trans = LTABC::Transform();
-            m_Buffer->CopyAndAdvance(&trans.Location, sizeof(trans.Location));
-            m_Buffer->CopyAndAdvance(&trans.Rotation, sizeof(trans.Rotation));
-            animation->Transforms.push_back(trans);
+            std::vector<LTABC::Transform> nodeTransforms;
+            for (int k = 0; k < static_cast<int>(animation->KeyFrameCount); ++k) {
+                auto trans = LTABC::Transform();
+                m_Buffer->CopyAndAdvance(&trans.Location, sizeof(trans.Location));
+                m_Buffer->CopyAndAdvance(&trans.Rotation, sizeof(trans.Rotation));
+                nodeTransforms.push_back(trans);
+                if (m_MeshVersion == 13) {
+                    // Skip two unk floats
+                    m_Buffer->SetCurrentPos(m_Buffer->GetCurrentPos() + 8);
+                }
+            }
+            animation->Transforms.push_back(nodeTransforms);
+
         }
         m_Animations.push_back(animation);
     }
@@ -493,7 +505,6 @@ bool LTABCImporter::BuildMesh() const {
     LTABC_PERF_BEGIN("Building Nodes");
     for (const auto &node : m_Nodes) {
         auto *boneNode = new aiNode(node->Name);
-
         boneNode->mTransformation = node->BindMatrix;
 
         // Set our parent, this is also where we'll be undoing the absolute positioning
@@ -502,6 +513,7 @@ bool LTABCImporter::BuildMesh() const {
             parentNode->addChildren(1, &boneNode);
             boneNode->mParent = parentNode;
 
+            // FIXME: Not sure if this is needed
             auto parentInv = node->Parent->InvBindMatrix;
             boneNode->mTransformation = parentInv * boneNode->mTransformation;
         }
@@ -668,12 +680,13 @@ bool LTABCImporter::BuildMesh() const {
             for (auto idx = 0; idx < static_cast<int>(bones.size()); idx++) {
                 auto bone = new aiBone();
                 const auto &boneData = bones[idx];
+                const auto offsetMatrix = boneData.LTNode->InvBindMatrix;
 
                 // Not in the weight list? Create an empty bone instead.
                 if (!pieceWeights.count(idx)) {
                     bone->mName = boneData.LTNode->Name;
                     bone->mWeights = nullptr;
-                    bone->mOffsetMatrix = boneData.LTNode->InvBindMatrix;
+                    bone->mOffsetMatrix = offsetMatrix;
                     bone->mNumWeights = 0;
                     mesh->mBones[idx] = bone;
                     continue;
@@ -682,7 +695,7 @@ bool LTABCImporter::BuildMesh() const {
                 const auto &weightList = pieceWeights[idx];
                 bone->mNode = boneData.boneNode;
                 bone->mName = boneData.LTNode->Name;
-                bone->mOffsetMatrix = boneData.LTNode->InvBindMatrix;
+                bone->mOffsetMatrix = offsetMatrix;
                 bone->mNumWeights = weightList.size();
                 bone->mWeights = new aiVertexWeight[bone->mNumWeights];
                 std::copy(weightList.begin(), weightList.end(), bone->mWeights);
@@ -711,6 +724,66 @@ bool LTABCImporter::BuildMesh() const {
         }
     }
     LTABC_PERF_END("Building Pieces");
+
+    auto debugNode = new aiNode("<DEBUG>");
+    m_Scene->mRootNode->addChildren(1, &debugNode);
+
+    LTABC_PERF_BEGIN("Building Animations");
+    // Add the materials we've collected to the scene
+    m_Scene->mNumAnimations = m_Animations.size();
+    m_Scene->mAnimations = new aiAnimation *[m_Scene->mNumAnimations];
+    for (int i = 0; i < static_cast<int>(m_Scene->mNumAnimations); ++i) {
+        const auto& ltAnim = m_Animations[i];
+        const auto& anim = new aiAnimation();
+
+        ai_assert(!ltAnim->KeyFrames.empty());
+
+        anim->mName = ltAnim->Name;
+        anim->mDuration = ltAnim->KeyFrames[ltAnim->KeyFrames.size()-1].Time;
+        anim->mTicksPerSecond = 1000; // LTAnim->Time is in milliseconds
+        anim->mNumChannels = ltAnim->Transforms.size();
+        anim->mChannels = new aiNodeAnim *[anim->mNumChannels];
+
+        for (int n = 0; n < static_cast<int>(anim->mNumChannels); ++n) {
+            const auto& channel = new aiNodeAnim();
+            const auto& node = bones[n];
+            auto hasPosKey = !(node.LTNode->Flags & 2);
+
+            channel->mNodeName = node.boneNode->mName;
+            channel->mNumPositionKeys = hasPosKey ? ltAnim->KeyFrameCount : 0;
+            channel->mNumRotationKeys = ltAnim->KeyFrameCount;
+            channel->mPositionKeys = hasPosKey ? new aiVectorKey[channel->mNumPositionKeys] : nullptr;
+            channel->mRotationKeys = new aiQuatKey[channel->mNumRotationKeys];
+
+            // Complete our requirement of needing a scale key
+            channel->mNumScalingKeys = 1;
+            channel->mScalingKeys = new aiVectorKey[channel->mNumScalingKeys];
+            channel->mScalingKeys[0].mTime = 0.0;
+            channel->mScalingKeys[0].mValue = aiVector3f(1.0f);
+
+            for (int kf = 0; kf < static_cast<int>(ltAnim->KeyFrameCount); ++kf) {
+                const auto& transform = ltAnim->Transforms[n][kf];
+                const auto& ltKey = ltAnim->KeyFrames[kf];
+                auto pos = hasPosKey ? LTABC::LTVector2aiVector(transform.Location) : aiVector3f();
+                auto& rotKey = channel->mRotationKeys[kf];
+                auto rot = LTABC::LTRotation2aiQuaternion(transform.Rotation);
+
+                rotKey.mTime = ltKey.Time;
+                rotKey.mInterpolation = aiAnimInterpolation_Linear;
+                rotKey.mValue = rot;
+
+                if (hasPosKey) {
+                    auto& posKey = channel->mPositionKeys[kf];
+                    posKey.mTime = ltKey.Time;
+                    posKey.mInterpolation = aiAnimInterpolation_Linear;
+                    posKey.mValue = pos;
+                }
+            }
+            anim->mChannels[n] = channel;
+        }
+        m_Scene->mAnimations[i] = anim;
+    }
+    LTABC_PERF_END("Building Animations");
 
     LTABC_PERF_BEGIN("Building Materials");
     // Add the materials we've collected to the scene

@@ -62,7 +62,7 @@ constexpr auto SECTION_HEADER = "Header";
 constexpr auto SECTION_PIECES = "Pieces";
 constexpr auto SECTION_NODES = "Nodes";
 constexpr auto SECTION_CHILD_MODELS = "ChildModels";
-constexpr auto SECTION_ANIMATIONS = "Animations";
+constexpr auto SECTION_ANIMATIONS = "Animation";
 constexpr auto SECTION_SOCKETS = "Sockets";
 constexpr auto SECTION_ANIM_BINDINGS = "AnimBindings";
 
@@ -113,7 +113,7 @@ inline aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat) {
     };
 }
 
-inline aiVector3d LTVector2aiVector(LTVector ltVec) {
+inline aiVector3f LTVector2aiVector(LTVector ltVec) {
     return {
         ltVec.x, ltVec.y, ltVec.z
     };
@@ -269,8 +269,8 @@ struct Node {
     std::string Name;
     uint16_t Index;
     uint8_t Flags; // 1 = Removable, 2 = Rotation Only (Animations)
-    aiMatrix4x4 BindMatrix;
-    aiMatrix4x4 InvBindMatrix;
+    aiMatrix4x4 BindMatrix;     // GlobalTransform
+    aiMatrix4x4 InvBindMatrix;  // InvGlobalTransform
     uint32_t ChildCount;
     Node *Parent;
 };
@@ -299,7 +299,7 @@ struct Animation {
     uint32_t InterpolationTime; // v11+
     uint32_t KeyFrameCount;
     std::vector<KeyFrame> KeyFrames; // len == KeyFrame Count
-    std::vector<Transform> Transforms; // len == Node Count
+    std::vector<std::vector<Transform>> Transforms; // len == Node Count
 };
 
 struct Socket {
