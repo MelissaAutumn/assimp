@@ -121,7 +121,7 @@ inline aiVector3f LTVector2aiVector(LTVector ltVec) {
 
 inline aiQuaternion LTRotation2aiQuaternion(LTRotation ltRot) {
     return {
-        ltRot.x, ltRot.y, ltRot.z, ltRot.w
+        ltRot.w, ltRot.x, ltRot.y, ltRot.z
     };
 }
 
