@@ -292,6 +292,13 @@ struct KeyFrame {
     std::string Command;
 };
 
+struct AnimTransform {
+    Transform transform;
+};
+struct AnimTransformV13:AnimTransform {
+    float unk[2];
+};
+
 struct Animation {
     LTVector Extents;
     std::string Name;
@@ -299,7 +306,8 @@ struct Animation {
     uint32_t InterpolationTime; // v11+
     uint32_t KeyFrameCount;
     std::vector<KeyFrame> KeyFrames; // len == KeyFrame Count
-    std::vector<std::vector<Transform>> Transforms; // len == Node Count
+    std::vector<AnimTransform*> Transforms; // Read this vector if MeshVersion <= 12
+    std::vector<AnimTransformV13*> TransformsV13; // Read this vector if MeshVersion == 13
 };
 
 struct Socket {

@@ -80,7 +80,15 @@ static constexpr aiImporterDesc desc = {
 LTABCImporter::~LTABCImporter() {
     delete m_Buffer;
     delete m_MeshHeader;
+    if (m_PieceHeader) {
+        for (const auto& ptr : m_PieceHeader->Pieces) {
+            for (const auto& lodPtr : ptr.LODs) {
+                delete lodPtr.Faces;
+            }
+        }
+    }
     delete m_PieceHeader;
+    delete m_Profiler;
     for (const auto ptr : m_Nodes) {
         delete ptr;
     }
@@ -91,6 +99,9 @@ LTABCImporter::~LTABCImporter() {
         delete ptr;
     }
     for (const auto ptr : m_Animations) {
+        for (const auto transformsPtr : ptr->Transforms) {
+            delete transformsPtr;
+        }
         delete ptr;
     }
     for (const auto ptr : m_Sockets) {
@@ -121,7 +132,7 @@ bool Assimp::LTABCImporter::CanRead(const std::string &pFile, IOSystem *pIOHandl
     }
 
     // Otherwise simply check the file format
-    return SimpleExtensionCheck(pFile, "abc");
+    return SimpleExtensionCheck(pFile, "abc") || SimpleExtensionCheck(pFile, "ABC");
 }
 
 void Assimp::LTABCImporter::SetupProperties(const Importer *pImp) {
@@ -393,23 +404,20 @@ bool LTABCImporter::ReadAnimations() {
             keyframe.Command = ReadLTString();
             animation->KeyFrames.push_back(keyframe);
         }
-        if (m_MeshVersion == 13) {
-            m_Buffer->SetCurrentPos(m_Buffer->GetCurrentPos() + 4);
-        }
         for (int n = 0; n < static_cast<int>(m_MeshHeader->NodeCount); ++n) {
-            std::vector<LTABC::Transform> nodeTransforms;
-            for (int k = 0; k < static_cast<int>(animation->KeyFrameCount); ++k) {
-                auto trans = LTABC::Transform();
-                m_Buffer->CopyAndAdvance(&trans.Location, sizeof(trans.Location));
-                m_Buffer->CopyAndAdvance(&trans.Rotation, sizeof(trans.Rotation));
-                nodeTransforms.push_back(trans);
-                if (m_MeshVersion == 13) {
-                    // Skip two unk floats
-                    m_Buffer->SetCurrentPos(m_Buffer->GetCurrentPos() + 8);
-                }
-            }
-            animation->Transforms.push_back(nodeTransforms);
+            // A slightly different animation transform structure makes this slightly annoying
+            if (m_MeshVersion <= 12) {
+                auto transforms = new LTABC::AnimTransform[animation->KeyFrameCount];
+                m_Buffer->CopyAndAdvance(transforms, sizeof(LTABC::AnimTransform)*animation->KeyFrameCount);
+                animation->Transforms.push_back(transforms);
+            } else { // v13
+                // Skip unk int
+                m_Buffer->SetCurrentPos(m_Buffer->GetCurrentPos() + 4);
 
+                auto transforms = new LTABC::AnimTransformV13[animation->KeyFrameCount];
+                m_Buffer->CopyAndAdvance(transforms, sizeof(LTABC::AnimTransformV13)*animation->KeyFrameCount);
+                animation->Transforms.push_back(transforms);
+            }
         }
         m_Animations.push_back(animation);
     }
@@ -495,10 +503,10 @@ bool LTABCImporter::BuildMesh() const {
     std::vector<int> childStack;
 
     // Create a place to store any header-related metadata
-    headerRoot->mMetaData = new aiMetadata();
-    headerRoot->mMetaData->Add("version", static_cast<uint64_t>(m_MeshHeader->Version));
-    headerRoot->mMetaData->Add("command_string", aiString(m_MeshHeader->CommandString));
-    headerRoot->mMetaData->Add("internal_radius", m_MeshHeader->InternalRadius);
+    headerRoot->mMetaData = aiMetadata::Alloc(3);
+    headerRoot->mMetaData->Set(0, "version", static_cast<uint64_t>(m_MeshHeader->Version));
+    headerRoot->mMetaData->Set(1, "command_string", aiString(m_MeshHeader->CommandString));
+    headerRoot->mMetaData->Set(2, "internal_radius", m_MeshHeader->InternalRadius);
 
     m_Scene->mRootNode->addChildren(1, &headerRoot);
 
@@ -524,10 +532,10 @@ bool LTABCImporter::BuildMesh() const {
             boneNode->mParent = nodeRoot;
         }
 
-        boneNode->mMetaData = new aiMetadata();
-        boneNode->mMetaData->Add("index", static_cast<uint64_t>(node->Index));
-        boneNode->mMetaData->Add("flags", static_cast<uint64_t>(node->Flags));
-        boneNode->mMetaData->Add("child_count", static_cast<uint64_t>(node->ChildCount));
+        boneNode->mMetaData = aiMetadata::Alloc(3);
+        boneNode->mMetaData->Set(0, "index", static_cast<uint64_t>(node->Index));
+        boneNode->mMetaData->Set(1, "flags", static_cast<uint64_t>(node->Flags));
+        boneNode->mMetaData->Set(2, "child_count", static_cast<uint64_t>(node->ChildCount));
 
         auto tmp = BoneData();
         tmp.boneNode = boneNode;
@@ -561,21 +569,27 @@ bool LTABCImporter::BuildMesh() const {
 
         auto weightSetNode = new aiNode();
         weightSetNode->mName = weightSet->Name;
-
+        weightSetNode->mMetaData = aiMetadata::Alloc(weightSet->NodeCount);
+#if 0
+        // This is many times faster than adding a child + metadata per weightset...
+        std::ostringstream wvbStream;
         for (int i = 0; i < static_cast<int>(weightSet->NodeCount); ++i) {
-            auto childNode = new aiNode();
+            if (i == 0) {
+                wvbStream << weightSet->NodeWeights[i];
+            }
+            wvbStream << "," << weightSet->NodeWeights[i];
 
-            char nameBuffer[256];
-            std::sprintf(nameBuffer, "WS_%s_%d", weightSet->Name.c_str(), i);
-            childNode->mName = nameBuffer;
-
-            childNode->mMetaData = new aiMetadata();
-            childNode->mMetaData->Add("node_weight", weightSet->NodeWeights[i]);
-
-            weightSetNode->addChildren(1, &childNode);
-            childNode->mParent = weightSetNode;
         }
-
+        weightSetNode->mMetaData->Add("weight_buffers", aiString(wvbStream.str()));
+#else
+        // Slower but acceptable
+        for (int i = 0; i < static_cast<int>(weightSet->NodeCount); ++i) {
+            char keyBuffer[11];
+            std::sprintf(keyBuffer, "%d", i);
+            keyBuffer[10] = '\0';
+            weightSetNode->mMetaData->Set(i, keyBuffer, weightSet->NodeWeights[i]);
+        }
+#endif
         weightSetRoot->addChildren(1, &weightSetNode);
         weightSetNode->mParent = weightSetRoot;
     }
@@ -702,14 +716,14 @@ bool LTABCImporter::BuildMesh() const {
                 mesh->mBones[idx] = bone;
             }
 
-            pieceNode->mMetaData = new aiMetadata;
-            pieceNode->mMetaData->Add("lod_index", lodIdx);
+            pieceNode->mMetaData = aiMetadata::Alloc(2);
+            pieceNode->mMetaData->Set(0, "lod_index", lodIdx);
 
             // First lod doesn't contain a distance, but we should add one for consistency.
             if (lodIdx == 0) {
-                pieceNode->mMetaData->Add("lod_distance", 0.0f);
+                pieceNode->mMetaData->Set(1, "lod_distance", 0.0f);
             } else {
-                pieceNode->mMetaData->Add("lod_distance", m_MeshHeader->LODDistances[lodIdx - 1]);
+                pieceNode->mMetaData->Set(1, "lod_distance", m_MeshHeader->LODDistances[lodIdx - 1]);
             }
 
             pieceNode->mMeshes = new unsigned int[1];
@@ -764,9 +778,9 @@ bool LTABCImporter::BuildMesh() const {
             for (int kf = 0; kf < static_cast<int>(ltAnim->KeyFrameCount); ++kf) {
                 const auto& transform = ltAnim->Transforms[n][kf];
                 const auto& ltKey = ltAnim->KeyFrames[kf];
-                auto pos = hasPosKey ? LTABC::LTVector2aiVector(transform.Location) : aiVector3f();
+                auto pos = hasPosKey ? LTABC::LTVector2aiVector(transform.transform.Location) : aiVector3f();
                 auto& rotKey = channel->mRotationKeys[kf];
-                auto rot = LTABC::LTRotation2aiQuaternion(transform.Rotation);
+                auto rot = LTABC::LTRotation2aiQuaternion(transform.transform.Rotation);
 
                 rotKey.mTime = ltKey.Time;
                 rotKey.mInterpolation = aiAnimInterpolation_Linear;
