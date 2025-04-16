@@ -44,8 +44,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 
 #pragma once
-#ifndef LTABCIMPORTER_H
-#define LTABCIMPORTER_H
+#ifndef LT2ABCIMPORTER_H
+#define LT2ABCIMPORTER_H
 
 #include "assimp/StreamReader.h"
 #include <assimp/BaseImporter.h>
@@ -56,23 +56,19 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "LT2ABC.h"
 
-struct aiNode;
-
 namespace Assimp {
 namespace LT {
-class ASSIMP_API LT2ABCImporter : public BaseImporter {
+namespace LT2 {
+class LT2ABCImporter {
 public:
     LT2ABCImporter() :
             m_FileSize(0), m_Buffer(nullptr), m_MeshVersion(0), m_Scene(nullptr), m_MeshHeader(nullptr), m_PieceHeader(nullptr), m_Profiler(nullptr) {};
-    ~LT2ABCImporter() override;
+    ~LT2ABCImporter();
 
-    bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const override;
-    void SetupProperties(const Importer *pImp) override;
-    const aiImporterDesc *GetInfo() const override;
+    bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const;
+    void ReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler);
 
 protected:
-    void InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) override;
-
     /**
      * Reads in the `SECTION_PIECES` into m_PieceHeader
      * @return true if success
@@ -106,20 +102,21 @@ private:
     StreamReaderLE *m_Buffer;
     uint32_t m_MeshVersion;
     aiScene *m_Scene;
-    LT::Header *m_MeshHeader;
-    LT::PieceHeader *m_PieceHeader;
-    std::vector<LT::Node *> m_Nodes;
-    std::vector<LT::WeightSet *> m_WeightSets;
-    std::vector<LT::ChildModel *> m_ChildModels;
-    std::vector<LT::Animation *> m_Animations;
-    std::vector<LT::Socket *> m_Sockets;
-    std::vector<LT::AnimBinding *> m_AnimationBindings;
-    std::vector<LT::AnimBinding *> m_ChildModelAnimationBindings;
+    Header *m_MeshHeader;
+    PieceHeader *m_PieceHeader;
+    std::vector<Node *> m_Nodes;
+    std::vector<WeightSet *> m_WeightSets;
+    std::vector<ChildModel *> m_ChildModels;
+    std::vector<Animation *> m_Animations;
+    std::vector<Socket *> m_Sockets;
+    std::vector<AnimBinding *> m_AnimationBindings;
+    std::vector<AnimBinding *> m_ChildModelAnimationBindings;
     Profiling::Profiler *m_Profiler;
 };
+} // namespace LT2
 } // namespace LT
 } // namespace Assimp
 
-#endif // LTABCIMPORTER_H
+#endif // LT2ABCIMPORTER_H
 
 #endif

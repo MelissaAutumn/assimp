@@ -51,6 +51,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace Assimp {
 namespace LT {
+namespace LT2 {
+
+constexpr auto SECTION_HEADER = "Header";
+constexpr auto SECTION_PIECES = "Pieces";
+constexpr auto SECTION_NODES = "Nodes";
+constexpr auto SECTION_CHILD_MODELS = "ChildModels";
+constexpr auto SECTION_ANIMATIONS = "Animation";
+constexpr auto SECTION_SOCKETS = "Sockets";
+constexpr auto SECTION_ANIM_BINDINGS = "AnimBindings";
 
 struct IOHeader {
     uint32_t Version;
@@ -132,7 +141,7 @@ struct Header {
 };
 
 struct FaceVertex {
-    LTTexCoord TexCoord;
+    LT::LTTexCoord TexCoord;
     uint16_t VertexIndex;
 } WITH_NO_PADDING;
 
@@ -142,7 +151,7 @@ struct Face {
 
 struct Weight {
     uint32_t NodeIndex;
-    LTVector Location; // This boy, right here!
+    LT::LTVector Location; // This boy, right here!
     float Bias;
 };
 
@@ -150,8 +159,8 @@ struct Vertex {
     uint16_t WeightCount;
     uint16_t SubLODVertexIndex;
     std::vector<Weight> Weights; //[WeightCount] <optimize=false>;
-    LTVector Location;
-    LTVector Normal;
+    LT::LTVector Location;
+    LT::LTVector Normal;
 };
 
 struct LOD {
@@ -181,7 +190,7 @@ struct PieceHeader { // (uint32 LODCount) {
 struct IONode {
     uint16_t Index;
     uint8_t Flags;
-    LTMatrix BindMatrix;
+    LT::LTMatrix BindMatrix;
     uint32_t ChildCount;
 };
 
@@ -212,7 +221,7 @@ struct WeightSet {
 struct ChildModel {
     std::string Name;
     uint32_t BuildNumber;
-    std::vector<Transform> Transforms; // len == Node Count
+    std::vector<LT::Transform> Transforms; // len == Node Count
 };
 
 struct KeyFrame {
@@ -221,14 +230,14 @@ struct KeyFrame {
 };
 
 struct AnimTransform {
-    Transform transform;
+    LT::Transform transform;
 };
 struct AnimTransformV13 : AnimTransform {
     float unk[2];
 };
 
 struct Animation {
-    LTVector Extents;
+    LT::LTVector Extents;
     std::string Name;
     uint32_t UnkInt; // v10+
     uint32_t InterpolationTime; // v11+
@@ -241,16 +250,17 @@ struct Animation {
 struct Socket {
     uint32_t NodeIndex;
     std::string Name;
-    LTRotation Rotation;
-    LTVector Location;
+    LT::LTRotation Rotation;
+    LT::LTVector Location;
 };
 
 struct AnimBinding {
     std::string Name;
-    LTVector Extents;
-    LTVector Origin;
+    LT::LTVector Extents;
+    LT::LTVector Origin;
 };
 
+} // namespace LT2
 } // namespace LT
 } // namespace Assimp
 #endif // LTABC_H

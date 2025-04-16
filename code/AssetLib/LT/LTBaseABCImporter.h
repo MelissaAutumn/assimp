@@ -38,16 +38,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------
 */
-/** @file  LTABCImporter.h
+/** @file  LTBaseABCImporter.h
  *  @brief Definition of the Lithtech Engine's ABC file format
  */
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 
 #pragma once
-#ifndef LTABCIMPORTER_H
-#define LTABCIMPORTER_H
+#ifndef LTBASEABCIMPORTER_H
+#define LTBASEABCIMPORTER_H
 
+#include <assimp/types.h>
+
+#include "LT2/LT2ABCImporter.h"
 #include "LTShared.h"
+
 #include <assimp/BaseImporter.h>
 #include <assimp/ParsingUtils.h>
 
@@ -57,7 +61,8 @@ namespace Assimp {
 
 class ASSIMP_API LTBaseABCImporter : public BaseImporter {
 public:
-    LTBaseABCImporter() {};
+    LTBaseABCImporter();
+    ;
     ~LTBaseABCImporter() override;
 
     bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const override;
@@ -68,6 +73,8 @@ protected:
     void InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) override;
 
 private:
+    LT::LT2::LT2ABCImporter *m_pLT2ABCImporter;
+    //LT::LT1ABCImporter m_pLT1ABCImporter;
 };
 
 } // namespace Assimp

@@ -38,21 +38,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------
 */
-/** @file  LTABCImporter.h
+/** @file  LT1ABCImporter.h
  *  @brief Definition of the Lithtech Engine's ABC file format
  */
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 
 #pragma once
-#ifndef LTABCIMPORTER_H
-#define LTABCIMPORTER_H
-
-#include "assimp/StreamReader.h"
-#include <assimp/BaseImporter.h>
-#include <assimp/ParsingUtils.h>
-#include <assimp/Profiler.h>
-
-#include <vector>
+#ifndef LT1ABCIMPORTER_H
+#define LT1ABCIMPORTER_H
 
 #include "LT1ABC.h"
 
@@ -60,65 +53,11 @@ struct aiNode;
 
 namespace Assimp {
 namespace LT {
-class ASSIMP_API LT1ABCImporter : public BaseImporter {
-public:
-    LT1ABCImporter() :
-            m_FileSize(0), m_Buffer(nullptr), m_MeshVersion(0), m_Scene(nullptr), m_MeshHeader(nullptr), m_PieceHeader(nullptr), m_Profiler(nullptr) {};
-    ~LT1ABCImporter() override;
+namespace LT1 {
 
-    bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const override;
-    void SetupProperties(const Importer *pImp) override;
-    const aiImporterDesc *GetInfo() const override;
-
-protected:
-    void InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) override;
-
-    /**
-     * Reads in the `SECTION_PIECES` into m_PieceHeader
-     * @return true if success
-     */
-    bool ReadPieces();
-    bool ReadNodes();
-    bool ReadWeightSets();
-    bool ReadChildModels();
-    bool ReadAnimations();
-    bool ReadSockets();
-    bool ReadAnimationBindings();
-
-    /**
-     * Takes various LTABC structs and constructs an assimp mesh
-     * @return true if success
-     */
-    bool BuildMesh() const;
-
-    // Helpers
-    std::string ReadLTString();
-
-    /**
-     * Checks buffer against itself (for null), and the offset vs filesize.
-     * Returns true if you can use buffer else false.
-     * @return bool
-     */
-    void CheckBuffer() const { ai_assert(m_Buffer != nullptr); }
-
-private:
-    size_t m_FileSize;
-    StreamReaderLE *m_Buffer;
-    uint32_t m_MeshVersion;
-    aiScene *m_Scene;
-    LT::Header *m_MeshHeader;
-    LT::PieceHeader *m_PieceHeader;
-    std::vector<LT::Node *> m_Nodes;
-    std::vector<LT::WeightSet *> m_WeightSets;
-    std::vector<LT::ChildModel *> m_ChildModels;
-    std::vector<LT::Animation *> m_Animations;
-    std::vector<LT::Socket *> m_Sockets;
-    std::vector<LT::AnimBinding *> m_AnimationBindings;
-    std::vector<LT::AnimBinding *> m_ChildModelAnimationBindings;
-    Profiling::Profiler *m_Profiler;
-};
+} // namespace LT1
 } // namespace LT
 } // namespace Assimp
 
-#endif // LTABCIMPORTER_H
+#endif // LT1ABCIMPORTER_H
 #endif

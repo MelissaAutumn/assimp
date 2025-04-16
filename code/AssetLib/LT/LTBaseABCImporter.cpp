@@ -40,28 +40,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 #include "LTBaseABCImporter.h"
-#include "assimp/Exporter.hpp"
-#include "assimp/IOSystem.hpp"
-#include "assimp/Profiler.h"
 #include "assimp/scene.h"
 
-#define LTABC_TESTING
-#define LTABC_RESERVE_VECTORS
-#define LTABC_PROFILE
-
-#ifdef LTABC_PROFILE
-#define LTABC_PERF_BEGIN(name) m_Profiler->BeginRegion(name)
-#define LTABC_PERF_END(name) m_Profiler->EndRegion(name)
-#else
-#define LTABC_PERF_BEGIN(name)
-#define LTABC_PERF_END(name)
-#endif
-
-#ifdef _DEBUG
-#define ltabc_assert(expr) ai_assert(expr)
-#else
-#define ltabc_assert(expr) expr
-#endif
+#include "LT1/LT1ABCImporter.h"
+#include "LT2/LT2ABCImporter.h"
 
 namespace Assimp {
 static constexpr aiImporterDesc desc = {
@@ -77,36 +59,32 @@ static constexpr aiImporterDesc desc = {
     "abc"
 };
 
+LTBaseABCImporter::LTBaseABCImporter() {
+    m_pLT2ABCImporter = new LT::LT2::LT2ABCImporter();
+}
 LTBaseABCImporter::~LTBaseABCImporter() = default;
 
-bool Assimp::LTBaseABCImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool) const {
-    // If we have a stream handler check the file version
-    if (pIOHandler) {
-        std::unique_ptr<IOStream> pStream(pIOHandler->Open(pFile, "rb"));
-        pStream->Seek(12, aiOrigin_SET);
-
-        uint32_t meshVersion = 0;
-        pStream->Read(&meshVersion, sizeof(meshVersion), 1);
-
-        // Version not supported!
-        if (meshVersion < desc.mMinMajor || meshVersion > desc.mMaxMajor) {
-            return false;
-        }
-    }
-
-    // Otherwise simply check the file format
+bool LTBaseABCImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool) const {
+    // We can't mark things here, so just read the file extension,
+    // we'll do the real check in InternReadFile
     return SimpleExtensionCheck(pFile, "abc");
 }
 
-void Assimp::LTBaseABCImporter::SetupProperties(const Importer *pImp) {
+void LTBaseABCImporter::SetupProperties(const Importer *pImp) {
     BaseImporter::SetupProperties(pImp);
 }
 
-const aiImporterDesc *Assimp::LTBaseABCImporter::GetInfo() const {
+const aiImporterDesc *LTBaseABCImporter::GetInfo() const {
     return &desc;
 }
 
-void Assimp::LTBaseABCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) {
+void LTBaseABCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) {
+    if (m_pLT2ABCImporter->CanRead(pFile, pIOHandler, false)) {
+        m_pLT2ABCImporter->ReadFile(pFile, pScene, pIOHandler);
+        return;
+    }
+
+
 }
 
 } // namespace Assimp

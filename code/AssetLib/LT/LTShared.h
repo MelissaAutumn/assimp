@@ -52,14 +52,6 @@ namespace LT {
 #define WITH_NO_PADDING
 #endif
 
-constexpr auto SECTION_HEADER = "Header";
-constexpr auto SECTION_PIECES = "Pieces";
-constexpr auto SECTION_NODES = "Nodes";
-constexpr auto SECTION_CHILD_MODELS = "ChildModels";
-constexpr auto SECTION_ANIMATIONS = "Animation";
-constexpr auto SECTION_SOCKETS = "Sockets";
-constexpr auto SECTION_ANIM_BINDINGS = "AnimBindings";
-
 struct LTString {
     short stringLength;
     char *string;
