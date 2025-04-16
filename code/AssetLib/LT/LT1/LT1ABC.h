@@ -38,92 +38,19 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------
 */
+#ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
+
 #ifndef LTABC_H
 #define LTABC_H
 
 #include <assimp/types.h>
 
+#include "../LTShared.h"
 #include <string>
 #include <vector>
 
 namespace Assimp {
-namespace LTABC {
-
-
-#if defined( __GNUC__ )
-#define WITH_NO_PADDING_SUPPORTED
-#define WITH_NO_PADDING  __attribute__((packed))
-#else
-#define WITH_NO_PADDING
-#endif
-
-
-constexpr auto SECTION_HEADER = "Header";
-constexpr auto SECTION_PIECES = "Pieces";
-constexpr auto SECTION_NODES = "Nodes";
-constexpr auto SECTION_CHILD_MODELS = "ChildModels";
-constexpr auto SECTION_ANIMATIONS = "Animation";
-constexpr auto SECTION_SOCKETS = "Sockets";
-constexpr auto SECTION_ANIM_BINDINGS = "AnimBindings";
-
-struct LTString {
-    short stringLength;
-    char *string;
-};
-
-struct LTTexCoord {
-    float u, v;
-};
-
-struct LTVector {
-    float x, y, z;
-};
-
-struct LTRotation {
-    float x, y, z, w;
-};
-
-struct LTMatrix {
-    LTRotation m[4];
-};
-
-struct Transform {
-    LTVector Location;
-    LTRotation Rotation;
-};
-
-inline aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat) {
-    return {
-        ltMat.m[0].x,
-        ltMat.m[0].y,
-        ltMat.m[0].z,
-        ltMat.m[0].w,
-        ltMat.m[1].x,
-        ltMat.m[1].y,
-        ltMat.m[1].z,
-        ltMat.m[1].w,
-        ltMat.m[2].x,
-        ltMat.m[2].y,
-        ltMat.m[2].z,
-        ltMat.m[2].w,
-        ltMat.m[3].x,
-        ltMat.m[3].y,
-        ltMat.m[3].z,
-        ltMat.m[3].w,
-    };
-}
-
-inline aiVector3f LTVector2aiVector(LTVector ltVec) {
-    return {
-        ltVec.x, ltVec.y, ltVec.z
-    };
-}
-
-inline aiQuaternion LTRotation2aiQuaternion(LTRotation ltRot) {
-    return {
-        ltRot.w, ltRot.x, ltRot.y, ltRot.z
-    };
-}
+namespace LT {
 
 struct IOHeader {
     uint32_t Version;
@@ -229,8 +156,8 @@ struct Vertex {
 
 struct LOD {
     uint32_t FaceCount;
-    Face* Faces;
-    //std::vector<Face> Faces; //[FaceCount] <optimize=false>;
+    Face *Faces;
+    // std::vector<Face> Faces; //[FaceCount] <optimize=false>;
     uint32_t VertexCount;
     std::vector<Vertex> Vertices; //[VertexCount] <optimize=false>;
 };
@@ -266,11 +193,12 @@ struct Node {
         ChildCount = ioNode.ChildCount;
     }
 
+    bool isVertexAnimated; // Determined by "d_" in front of name...
     std::string Name;
     uint16_t Index;
     uint8_t Flags; // 1 = Removable, 2 = Rotation Only (Animations)
-    aiMatrix4x4 BindMatrix;     // GlobalTransform
-    aiMatrix4x4 InvBindMatrix;  // InvGlobalTransform
+    aiMatrix4x4 BindMatrix; // GlobalTransform
+    aiMatrix4x4 InvBindMatrix; // InvGlobalTransform
     uint32_t ChildCount;
     Node *Parent;
 };
@@ -295,7 +223,7 @@ struct KeyFrame {
 struct AnimTransform {
     Transform transform;
 };
-struct AnimTransformV13:AnimTransform {
+struct AnimTransformV13 : AnimTransform {
     float unk[2];
 };
 
@@ -306,8 +234,8 @@ struct Animation {
     uint32_t InterpolationTime; // v11+
     uint32_t KeyFrameCount;
     std::vector<KeyFrame> KeyFrames; // len == KeyFrame Count
-    std::vector<AnimTransform*> Transforms; // Read this vector if MeshVersion <= 12
-    std::vector<AnimTransformV13*> TransformsV13; // Read this vector if MeshVersion == 13
+    std::vector<AnimTransform *> Transforms; // Read this vector if MeshVersion <= 12
+    std::vector<AnimTransformV13 *> TransformsV13; // Read this vector if MeshVersion == 13
 };
 
 struct Socket {
@@ -323,6 +251,8 @@ struct AnimBinding {
     LTVector Origin;
 };
 
-} // namespace LTABC
+} // namespace LT
 } // namespace Assimp
 #endif // LTABC_H
+
+#endif

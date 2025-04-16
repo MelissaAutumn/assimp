@@ -402,9 +402,20 @@ ADD_ASSIMP_IMPORTER( IRR
 )
 
 ADD_ASSIMP_IMPORTER( LTABC
-  AssetLib/LTABC/LTABCImporter.cpp
-  AssetLib/LTABC/LTABCImporter.h
-  AssetLib/LTABC/LTABC.h
+  # Shogo, Blood2, Psycho, etc..
+  AssetLib/LT/LT1/LT1ABC.h
+  AssetLib/LT/LT1/LT1ABCImporter.cpp
+  AssetLib/LT/LT1/LT1ABCImporter.h
+
+  # NOLF1, AVP2, MM9, etc..
+  AssetLib/LT/LT2/LT2ABC.h
+  AssetLib/LT/LT2/LT2ABCImporter.cpp
+  AssetLib/LT/LT2/LT2ABCImporter.h
+
+  # Main importer and shared
+  AssetLib/LT/LTBaseABCImporter.cpp
+  AssetLib/LT/LTBaseABCImporter.h
+  AssetLib/LT/LTShared.h
 )
 
 ADD_ASSIMP_IMPORTER( LWO

@@ -41,6 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /** @file  LTABCImporter.h
  *  @brief Definition of the Lithtech Engine's ABC file format
  */
+#ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 
 #pragma once
 #ifndef LTABCIMPORTER_H
@@ -53,17 +54,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <vector>
 
-#include "LTABC.h"
+#include "LT1ABC.h"
 
 struct aiNode;
 
 namespace Assimp {
-
-class ASSIMP_API LTABCImporter : public BaseImporter {
+namespace LT {
+class ASSIMP_API LT1ABCImporter : public BaseImporter {
 public:
-    LTABCImporter() :
+    LT1ABCImporter() :
             m_FileSize(0), m_Buffer(nullptr), m_MeshVersion(0), m_Scene(nullptr), m_MeshHeader(nullptr), m_PieceHeader(nullptr), m_Profiler(nullptr) {};
-    ~LTABCImporter() override;
+    ~LT1ABCImporter() override;
 
     bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const override;
     void SetupProperties(const Importer *pImp) override;
@@ -105,18 +106,19 @@ private:
     StreamReaderLE *m_Buffer;
     uint32_t m_MeshVersion;
     aiScene *m_Scene;
-    LTABC::Header *m_MeshHeader;
-    LTABC::PieceHeader *m_PieceHeader;
-    std::vector<LTABC::Node *> m_Nodes;
-    std::vector<LTABC::WeightSet *> m_WeightSets;
-    std::vector<LTABC::ChildModel *> m_ChildModels;
-    std::vector<LTABC::Animation *> m_Animations;
-    std::vector<LTABC::Socket *> m_Sockets;
-    std::vector<LTABC::AnimBinding *> m_AnimationBindings;
-    std::vector<LTABC::AnimBinding *> m_ChildModelAnimationBindings;
-    Profiling::Profiler* m_Profiler;
+    LT::Header *m_MeshHeader;
+    LT::PieceHeader *m_PieceHeader;
+    std::vector<LT::Node *> m_Nodes;
+    std::vector<LT::WeightSet *> m_WeightSets;
+    std::vector<LT::ChildModel *> m_ChildModels;
+    std::vector<LT::Animation *> m_Animations;
+    std::vector<LT::Socket *> m_Sockets;
+    std::vector<LT::AnimBinding *> m_AnimationBindings;
+    std::vector<LT::AnimBinding *> m_ChildModelAnimationBindings;
+    Profiling::Profiler *m_Profiler;
 };
-
+} // namespace LT
 } // namespace Assimp
 
 #endif // LTABCIMPORTER_H
+#endif

@@ -209,7 +209,7 @@ corresponding preprocessor flag to selectively disable formats.
 #include "AssetLib/IQM/IQMImporter.h"
 #endif
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
-#include "AssetLib/LTABC/LTABCImporter.h"
+#include "AssetLib/LT/LTBaseABCImporter.h"
 #endif
 
 namespace Assimp {
@@ -392,7 +392,7 @@ void GetImporterInstanceList(std::vector<BaseImporter *> &out) {
     out.push_back(new IQMImporter());
 #endif
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
-    out.push_back(new LTABCImporter());
+    out.push_back(new LTBaseABCImporter());
 #endif
 }
 
