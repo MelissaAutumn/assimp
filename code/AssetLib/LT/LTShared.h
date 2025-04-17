@@ -42,20 +42,30 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef LTSHARED_H
 #define LTSHARED_H
-namespace Assimp {
-namespace LT {
+
+#include <cstdint>
+#include <string>
+
+#include "assimp/StreamReader.h"
+#include "assimp/matrix4x4.h"
+#include "assimp/quaternion.h"
 
 #if defined(__GNUC__)
 #define WITH_NO_PADDING_SUPPORTED
 #define WITH_NO_PADDING __attribute__((packed))
 #else
 #define WITH_NO_PADDING
-#endif
+#endif/
+
+namespace Assimp::LT {
 
 struct LTString {
     short stringLength;
     char *string;
 };
+
+std::string ReadLTString(StreamReaderLE *pBuffer, uint16_t assertLength);
+std::string ReadLTString(StreamReaderLE *pBuffer);
 
 struct LTTexCoord {
     float u, v;
@@ -78,41 +88,11 @@ struct Transform {
     LTRotation Rotation;
 };
 
-inline aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat) {
-    return {
-        ltMat.m[0].x,
-        ltMat.m[0].y,
-        ltMat.m[0].z,
-        ltMat.m[0].w,
-        ltMat.m[1].x,
-        ltMat.m[1].y,
-        ltMat.m[1].z,
-        ltMat.m[1].w,
-        ltMat.m[2].x,
-        ltMat.m[2].y,
-        ltMat.m[2].z,
-        ltMat.m[2].w,
-        ltMat.m[3].x,
-        ltMat.m[3].y,
-        ltMat.m[3].z,
-        ltMat.m[3].w,
-    };
-}
+aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat);
+aiVector3f LTVector2aiVector(LTVector ltVec);
+aiQuaternion LTRotation2aiQuaternion(LTRotation ltRot);
 
-inline aiVector3f LTVector2aiVector(LTVector ltVec) {
-    return {
-        ltVec.x, ltVec.y, ltVec.z
-    };
-}
-
-inline aiQuaternion LTRotation2aiQuaternion(LTRotation ltRot) {
-    return {
-        ltRot.w, ltRot.x, ltRot.y, ltRot.z
-    };
-}
-
-} // namespace LT
-} // namespace Assimp
+} // namespace Assimp::LT
 #endif // LTSHARED_H
 
 #endif

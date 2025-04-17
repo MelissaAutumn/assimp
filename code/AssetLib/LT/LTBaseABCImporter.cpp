@@ -60,9 +60,14 @@ static constexpr aiImporterDesc desc = {
 };
 
 LTBaseABCImporter::LTBaseABCImporter() {
+    m_pLT1ABCImporter = new LT::LT1::LT1ABCImporter();
     m_pLT2ABCImporter = new LT::LT2::LT2ABCImporter();
+
 }
-LTBaseABCImporter::~LTBaseABCImporter() = default;
+LTBaseABCImporter::~LTBaseABCImporter() {
+    delete m_pLT1ABCImporter;
+    delete m_pLT2ABCImporter;
+}
 
 bool LTBaseABCImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool) const {
     // We can't mark things here, so just read the file extension,
@@ -79,11 +84,15 @@ const aiImporterDesc *LTBaseABCImporter::GetInfo() const {
 }
 
 void LTBaseABCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) {
+    // LT2 is first because it's easier to check version
     if (m_pLT2ABCImporter->CanRead(pFile, pIOHandler, false)) {
         m_pLT2ABCImporter->ReadFile(pFile, pScene, pIOHandler);
         return;
     }
-
+    if (m_pLT1ABCImporter->CanRead(pFile, pIOHandler, false)) {
+        m_pLT1ABCImporter->ReadFile(pFile, pScene, pIOHandler);
+        return;
+    }
 
 }
 

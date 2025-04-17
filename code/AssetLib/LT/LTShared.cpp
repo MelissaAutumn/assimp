@@ -40,25 +40,75 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 
-#ifndef LT1ABC_H
-#define LT1ABC_H
+#include "LTShared.h"
 
-#include "assimp/types.h"
-#include <string>
-#include <vector>
+#include <assimp/StreamReader.h>
+#include <assimp/ai_assert.h>
+#include <assimp/types.h>
 
-namespace Assimp::LT::LT1 {
+namespace Assimp::LT {
 
-constexpr auto SECTION_HEADER = "Header";
-constexpr auto SECTION_PIECES = "Pieces";
-constexpr auto SECTION_NODES = "Nodes";
-constexpr auto SECTION_CHILD_MODELS = "ChildModels";
-constexpr auto SECTION_ANIMATIONS = "Animation";
-constexpr auto SECTION_SOCKETS = "Sockets";
-constexpr auto SECTION_ANIM_BINDINGS = "AnimBindings";
-constexpr auto VERSION_STRING = "MonolithExport Model File v6";
+// FIXME: This can't be inlined because of stream reader bleh
+std::string ReadLTString(StreamReaderLE *pBuffer, uint16_t assertLength) {
+    ai_assert(pBuffer);
 
-} // namespace Assimp::LT::LT1
-#endif // LT1ABC_H
+    const uint16_t len = pBuffer->GetU2();
+
+    if (len > 0 && assertLength > 0 && len != assertLength) {
+        return { "" };
+    }
+
+    // Sanity check
+    ai_assert(len < 1024);
+
+    // Don't even try to read an empty string...
+    if (len == 0) {
+        return { "" };
+    }
+
+    char string[len + 1];
+    pBuffer->CopyAndAdvance(string, len);
+    string[len] = '\0';
+    return { string };
+};
+
+std::string ReadLTString(StreamReaderLE *pBuffer) {
+    return ReadLTString(pBuffer, 0);
+}
+
+aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat) {
+    return {
+        ltMat.m[0].x,
+        ltMat.m[0].y,
+        ltMat.m[0].z,
+        ltMat.m[0].w,
+        ltMat.m[1].x,
+        ltMat.m[1].y,
+        ltMat.m[1].z,
+        ltMat.m[1].w,
+        ltMat.m[2].x,
+        ltMat.m[2].y,
+        ltMat.m[2].z,
+        ltMat.m[2].w,
+        ltMat.m[3].x,
+        ltMat.m[3].y,
+        ltMat.m[3].z,
+        ltMat.m[3].w,
+    };
+}
+
+aiVector3f LTVector2aiVector(LTVector ltVec) {
+    return {
+        ltVec.x, ltVec.y, ltVec.z
+    };
+}
+
+aiQuaternion LTRotation2aiQuaternion(LTRotation ltRot) {
+    return {
+        ltRot.w, ltRot.x, ltRot.y, ltRot.z
+    };
+}
+
+} // namespace Assimp::LT
 
 #endif

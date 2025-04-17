@@ -38,11 +38,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------
 */
-#include "assimp/Profiler.h"
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 #include "LT2ABCImporter.h"
 #include "assimp/Exporter.hpp"
 #include "assimp/IOSystem.hpp"
+#include "assimp/Profiler.h"
 #include "assimp/scene.h"
 
 #define LTABC_TESTING
@@ -63,21 +63,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ltabc_assert(expr) expr
 #endif
 
-namespace Assimp {
-namespace LT {
-namespace LT2 {
-static constexpr aiImporterDesc desc = {
-    "Lithtech ABC Importer",
-    "melissaautumn",
-    "melissaautumn",
-    "Supports v9 to v13",
-    aiImporterFlags_SupportBinaryFlavour,
-    9,
-    0,
-    13,
-    0,
-    "abc"
-};
+namespace Assimp::LT::LT2 {
 
 LT2ABCImporter::~LT2ABCImporter() {
     delete m_Buffer;
@@ -128,7 +114,7 @@ bool LT2ABCImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, boo
         pStream->Read(&meshVersion, sizeof(meshVersion), 1);
 
         // Version not supported!
-        if (meshVersion < desc.mMinMajor || meshVersion > desc.mMaxMajor) {
+        if (meshVersion < 9 || meshVersion > 13) {
             return false;
         }
         return true;
@@ -142,15 +128,12 @@ void LT2ABCImporter::ReadFile(const std::string &pFile, aiScene *pScene, IOSyste
 #endif
     LTABC_PERF_BEGIN("InternReadFile");
 
-    std::unique_ptr<IOStream> pStream(pIOHandler->Open(pFile, "rb"));
+    m_Buffer = new StreamReaderLE(pIOHandler->Open(pFile, "rb"));
 
     // Check whether we can read from the file
-    if (pStream == nullptr) {
+    if (m_Buffer == nullptr) {
         throw DeadlyImportError("Failed to open ABC file ", pFile, ".");
     }
-
-    m_FileSize = pStream->FileSize();
-    m_Buffer = new StreamReaderLE(pIOHandler->Open(pFile, "rb"));
 
     m_Scene = pScene;
     m_Scene->mRootNode = new aiNode("<ABC_Root>");
@@ -161,7 +144,7 @@ void LT2ABCImporter::ReadFile(const std::string &pFile, aiScene *pScene, IOSyste
     while (nextSectionOffset != -1) {
         m_Buffer->SetCurrentPos(nextSectionOffset);
 
-        auto sectionName = ReadLTString();
+        auto sectionName = ReadLTString(m_Buffer);
         nextSectionOffset = m_Buffer->GetI4();
 
         LTABC_PERF_BEGIN(sectionName);
@@ -175,7 +158,7 @@ void LT2ABCImporter::ReadFile(const std::string &pFile, aiScene *pScene, IOSyste
                 unkV13Value = m_Buffer->GetU4();
             }
 
-            auto commandString = ReadLTString();
+            auto commandString = ReadLTString(m_Buffer);
             auto internalRadius = m_Buffer->GetF4();
             auto lodDistanceCount = m_Buffer->GetU4();
             m_Buffer->IncPtr(60); // Skip padding
@@ -239,7 +222,7 @@ bool LT2ABCImporter::ReadPieces() {
         piece.SpecularScale = m_Buffer->GetF4();
         piece.LODWeight = m_MeshVersion > 9 ? m_Buffer->GetF4() : 0.0f;
         piece.Unknown = m_Buffer->GetU2();
-        piece.Name = ReadLTString();
+        piece.Name = ReadLTString(m_Buffer);
 
 #ifdef LTABC_RESERVE_VECTORS
         piece.LODs.reserve(m_MeshHeader->LODCount);
@@ -313,7 +296,7 @@ bool LT2ABCImporter::ReadNodes() {
         auto *node = new Node();
         LT::LTMatrix bindMatrix = {};
 
-        node->Name = ReadLTString();
+        node->Name = ReadLTString(m_Buffer);
         node->Index = m_Buffer->GetU2();
         node->Flags = m_Buffer->GetU1();
         m_Buffer->CopyAndAdvance(&bindMatrix, sizeof(LT::LTMatrix));
@@ -345,7 +328,7 @@ bool LT2ABCImporter::ReadWeightSets() {
 #endif
     for (int i = 0; i < static_cast<int>(weightSetCount); ++i) {
         auto weightSet = new WeightSet();
-        weightSet->Name = ReadLTString();
+        weightSet->Name = ReadLTString(m_Buffer);
         weightSet->NodeCount = m_Buffer->GetU4();
         for (int n = 0; n < static_cast<int>(weightSet->NodeCount); ++n) {
             weightSet->NodeWeights.push_back(m_Buffer->GetF4());
@@ -364,7 +347,7 @@ bool LT2ABCImporter::ReadChildModels() {
 #endif
     for (int i = 0; i < static_cast<int>(childCount); ++i) {
         auto childModel = new ChildModel();
-        childModel->Name = ReadLTString(); // Will be blank for "self"
+        childModel->Name = ReadLTString(m_Buffer); // Will be blank for "self"
         childModel->BuildNumber = m_Buffer->GetU4();
         for (int n = 0; n < static_cast<int>(m_MeshHeader->NodeCount); ++n) {
             auto trans = LT::Transform();
@@ -387,14 +370,14 @@ bool LT2ABCImporter::ReadAnimations() {
     for (int i = 0; i < static_cast<int>(animCount); ++i) {
         auto animation = new Animation();
         m_Buffer->CopyAndAdvance(&animation->Extents, sizeof(animation->Extents));
-        animation->Name = ReadLTString();
+        animation->Name = ReadLTString(m_Buffer);
         animation->UnkInt = m_MeshVersion > 9 ? m_Buffer->GetU4() : 0;
         animation->InterpolationTime = m_MeshVersion > 10 ? m_Buffer->GetU4() : 200;
         animation->KeyFrameCount = m_Buffer->GetU4();
         for (int k = 0; k < static_cast<int>(animation->KeyFrameCount); ++k) {
             auto keyframe = KeyFrame();
             keyframe.Time = m_Buffer->GetU4();
-            keyframe.Command = ReadLTString();
+            keyframe.Command = ReadLTString(m_Buffer);
             animation->KeyFrames.push_back(keyframe);
         }
         for (int n = 0; n < static_cast<int>(m_MeshHeader->NodeCount); ++n) {
@@ -427,7 +410,7 @@ bool LT2ABCImporter::ReadSockets() {
     for (int i = 0; i < static_cast<int>(socketCount); ++i) {
         auto socket = new Socket();
         socket->NodeIndex = m_Buffer->GetU4();
-        socket->Name = ReadLTString();
+        socket->Name = ReadLTString(m_Buffer);
         // Yes these are flipped compared to every other transform :shrug:
         m_Buffer->CopyAndAdvance(&socket->Rotation, sizeof(socket->Rotation));
         m_Buffer->CopyAndAdvance(&socket->Location, sizeof(socket->Location));
@@ -445,7 +428,7 @@ bool LT2ABCImporter::ReadAnimationBindings() {
 #endif
     for (int i = 0; i < static_cast<int>(animBindingCount); ++i) {
         auto animBinding = new AnimBinding();
-        animBinding->Name = ReadLTString();
+        animBinding->Name = ReadLTString(m_Buffer);
         m_Buffer->CopyAndAdvance(&animBinding->Extents, sizeof(animBinding->Extents));
         m_Buffer->CopyAndAdvance(&animBinding->Origin, sizeof(animBinding->Origin));
         m_AnimationBindings.push_back(animBinding);
@@ -459,7 +442,7 @@ bool LT2ABCImporter::ReadAnimationBindings() {
 #endif
         for (int i = 0; i < static_cast<int>(childAnimBindingCount); ++i) {
             auto animBinding = new AnimBinding();
-            animBinding->Name = ReadLTString();
+            animBinding->Name = ReadLTString(m_Buffer);
             m_Buffer->CopyAndAdvance(&animBinding->Extents, sizeof(animBinding->Extents));
             m_Buffer->CopyAndAdvance(&animBinding->Origin, sizeof(animBinding->Origin));
             m_ChildModelAnimationBindings.push_back(animBinding);
@@ -813,26 +796,5 @@ bool LT2ABCImporter::BuildMesh() const {
     return true;
 }
 
-std::string LT2ABCImporter::ReadLTString() {
-    CheckBuffer();
-
-    const uint16_t len = m_Buffer->GetU2();
-
-    // Sanity check
-    ai_assert(len < 1024);
-
-    // Don't even try to read an empty string...
-    if (len == 0) {
-        return { "" };
-    }
-
-    char string[len + 1];
-    m_Buffer->CopyAndAdvance(string, len);
-    string[len] = '\0';
-    return { string };
-}
-
-} // namespace LT2
-} // namespace LT
-} // namespace Assimp
+} // namespace Assimp::LT::LT2
 #endif

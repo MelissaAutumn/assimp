@@ -49,6 +49,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <assimp/types.h>
 
+#include "LT1/LT1ABCImporter.h"
 #include "LT2/LT2ABCImporter.h"
 #include "LTShared.h"
 
@@ -62,19 +63,20 @@ namespace Assimp {
 class ASSIMP_API LTBaseABCImporter : public BaseImporter {
 public:
     LTBaseABCImporter();
-    ;
     ~LTBaseABCImporter() override;
 
     bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const override;
     void SetupProperties(const Importer *pImp) override;
     const aiImporterDesc *GetInfo() const override;
 
+
+
 protected:
     void InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) override;
 
 private:
+    LT::LT1::LT1ABCImporter *m_pLT1ABCImporter;
     LT::LT2::LT2ABCImporter *m_pLT2ABCImporter;
-    //LT::LT1ABCImporter m_pLT1ABCImporter;
 };
 
 } // namespace Assimp

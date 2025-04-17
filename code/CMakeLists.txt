@@ -415,6 +415,7 @@ ADD_ASSIMP_IMPORTER( LTABC
   # Main importer and shared
   AssetLib/LT/LTBaseABCImporter.cpp
   AssetLib/LT/LTBaseABCImporter.h
+  AssetLib/LT/LTShared.cpp
   AssetLib/LT/LTShared.h
 )
 

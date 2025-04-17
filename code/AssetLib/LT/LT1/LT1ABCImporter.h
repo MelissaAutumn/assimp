@@ -48,16 +48,53 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LT1ABCIMPORTER_H
 
 #include "LT1ABC.h"
+#include <assimp/BaseImporter.h>
+#include <assimp/ParsingUtils.h>
+#include <assimp/Profiler.h>
+#include <assimp/StreamReader.h>
 
 struct aiNode;
 
-namespace Assimp {
-namespace LT {
-namespace LT1 {
+namespace Assimp::LT::LT1 {
+class LT1ABCImporter {
+public:
+    LT1ABCImporter() :
+            m_Buffer(nullptr) {};
+    ~LT1ABCImporter() = default;
 
-} // namespace LT1
-} // namespace LT
-} // namespace Assimp
+    bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const;
+    void ReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler);
+
+protected:
+    /**
+     * Reads in the `SECTION_PIECES` into m_PieceHeader
+     * @return true if success
+     */
+    bool ReadPieces();
+    bool ReadNodes();
+    bool ReadWeightSets();
+    bool ReadChildModels();
+    bool ReadAnimations();
+    bool ReadSockets();
+    bool ReadAnimationBindings();
+
+    /**
+     * Takes various LTABC structs and constructs an assimp mesh
+     * @return true if success
+     */
+    bool BuildMesh() const;
+
+    /**
+     * Checks buffer against itself (for null), and the offset vs filesize.
+     * Returns true if you can use buffer else false.
+     * @return bool
+     */
+    void CheckBuffer() const { ai_assert(m_Buffer != nullptr); }
+
+private:
+    StreamReaderLE *m_Buffer;
+};
+} // namespace Assimp::LT::LT1
 
 #endif // LT1ABCIMPORTER_H
 #endif

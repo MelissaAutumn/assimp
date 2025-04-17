@@ -40,8 +40,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
 
-#ifndef LTABC_H
-#define LTABC_H
+#ifndef LT2ABC_H
+#define LT2ABC_H
 
 #include <assimp/types.h>
 
@@ -49,9 +49,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string>
 #include <vector>
 
-namespace Assimp {
-namespace LT {
-namespace LT2 {
+namespace Assimp::LT::LT2 {
 
 constexpr auto SECTION_HEADER = "Header";
 constexpr auto SECTION_PIECES = "Pieces";
@@ -260,8 +258,6 @@ struct AnimBinding {
     LT::LTVector Origin;
 };
 
-} // namespace LT2
-} // namespace LT
-} // namespace Assimp
-#endif // LTABC_H
+} // namespace Assimp::LT::LT2
+#endif // LT2ABC_H
 #endif

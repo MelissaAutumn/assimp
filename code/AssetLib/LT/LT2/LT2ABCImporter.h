@@ -38,7 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------
 */
-/** @file  LTABCImporter.h
+/** @file  LT2ABCImporter.h
  *  @brief Definition of the Lithtech Engine's ABC file format
  */
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
@@ -47,18 +47,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef LT2ABCIMPORTER_H
 #define LT2ABCIMPORTER_H
 
-#include "assimp/StreamReader.h"
+#include "LT2ABC.h"
+
 #include <assimp/BaseImporter.h>
 #include <assimp/ParsingUtils.h>
 #include <assimp/Profiler.h>
+#include <assimp/StreamReader.h>
 
 #include <vector>
 
-#include "LT2ABC.h"
-
-namespace Assimp {
-namespace LT {
-namespace LT2 {
+namespace Assimp::LT::LT2 {
 class LT2ABCImporter {
 public:
     LT2ABCImporter() :
@@ -87,9 +85,6 @@ protected:
      */
     bool BuildMesh() const;
 
-    // Helpers
-    std::string ReadLTString();
-
     /**
      * Checks buffer against itself (for null), and the offset vs filesize.
      * Returns true if you can use buffer else false.
@@ -113,9 +108,7 @@ private:
     std::vector<AnimBinding *> m_ChildModelAnimationBindings;
     Profiling::Profiler *m_Profiler;
 };
-} // namespace LT2
-} // namespace LT
-} // namespace Assimp
+} // namespace Assimp::LT::LT2
 
 #endif // LT2ABCIMPORTER_H
 

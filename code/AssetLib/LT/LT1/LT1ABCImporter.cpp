@@ -39,7 +39,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ----------------------------------------------------------------------
 */
 #ifndef ASSIMP_BUILD_NO_LTABC_IMPORTER
-
 #include "LT1ABCImporter.h"
+#include "../LTShared.h"
+
+bool Assimp::LT::LT1::LT1ABCImporter::CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const {
+    return false;
+}
+void Assimp::LT::LT1::LT1ABCImporter::ReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) {
+}
 
 #endif
