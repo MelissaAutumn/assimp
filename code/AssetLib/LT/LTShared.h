@@ -97,7 +97,12 @@ struct Transform {
 };
 
 aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat);
-aiVector3f LTVector2aiVector(LTVector ltVec);
+template<typename T>
+aiVector3f LTVector2aiVector(T ltVec) {
+    return {
+        static_cast<float>(ltVec.x), static_cast<float>(ltVec.y), static_cast<float>(ltVec.z)
+    };
+}
 aiQuaternion LTRotation2aiQuaternion(LTRotation ltRot);
 
 } // namespace Assimp::LT

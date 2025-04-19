@@ -71,7 +71,7 @@ struct Header {
 
 struct Vertex {
     LTVector Location;
-    LTByteVector Normals;
+    LTByteVector Normal;
     uint8_t NodeIndex; // Only one weight per vertex
     uint16_t VertexReplacements[2]; // Unknown, probably for LOD swaps
 } WITH_NO_PADDING;

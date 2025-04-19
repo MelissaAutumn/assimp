@@ -97,11 +97,13 @@ aiMatrix4x4 LTMatrix2aiMatrix(LTMatrix ltMat) {
     };
 }
 
+/*
 aiVector3f LTVector2aiVector(LTVector ltVec) {
     return {
         ltVec.x, ltVec.y, ltVec.z
     };
 }
+*/
 
 aiQuaternion LTRotation2aiQuaternion(LTRotation ltRot) {
     return {

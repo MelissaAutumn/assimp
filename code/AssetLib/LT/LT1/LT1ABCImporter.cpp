@@ -74,14 +74,14 @@ Assimp::LT::LT1::LT1ABCImporter::~LT1ABCImporter() {
         delete m_Geometry->Vertices;
         delete m_Geometry;
     }
-    for (auto ptr : m_Nodes) {
+    for (const auto ptr : m_Nodes) {
         if (ptr->MDVertexCount) {
             delete ptr->MDVertexList;
         }
         delete ptr;
     }
     for (int i = 0; i < m_AnimationCount; ++i) {
-        auto& ptr = m_Animations[i];
+        const auto & ptr = m_Animations[i];
         delete ptr->Keyframes;
         for (int n = 0; n < m_NodeCount; ++n) {
             delete ptr->NodeData[n].NodeTransforms;
@@ -189,7 +189,7 @@ bool Assimp::LT::LT1::LT1ABCImporter::ReadGeometry() {
     m_Geometry->Vertices = new Vertex[m_Geometry->VertexCount];
     for (auto i = 0; i < static_cast<int>(m_Geometry->VertexCount); i++) {
         m_Buffer->CopyAndAdvance(&m_Geometry->Vertices[i].Location, sizeof(LTVector));
-        m_Buffer->CopyAndAdvance(&m_Geometry->Vertices[i].Normals, sizeof(LTByteVector));
+        m_Buffer->CopyAndAdvance(&m_Geometry->Vertices[i].Normal, sizeof(LTByteVector));
         m_Geometry->Vertices[i].NodeIndex = m_Buffer->GetU1();
         m_Geometry->Vertices[i].VertexReplacements[0] = m_Buffer->GetU2();
         m_Geometry->Vertices[i].VertexReplacements[0] = m_Buffer->GetU2();
@@ -296,7 +296,7 @@ bool Assimp::LT::LT1::LT1ABCImporter::ReadAnimations() {
                     auto np = node->Parent->Index;
                     const auto& parentNodeData = animation->NodeData[np];
                     scale = aiVector3f(1.0f) - (LTVector2aiVector(parentNodeData.Scale) - scale);
-                    //origin = aiVector3f(0.0f) - (LTVector2aiVector(parentNodeData.Origin) - origin);
+                    origin = (LTVector2aiVector(parentNodeData.Origin) - origin);
                 }
 
                 auto matrix = aiMatrix4x4(scale, rot, origin + loc);
@@ -329,13 +329,14 @@ bool Assimp::LT::LT1::LT1ABCImporter::BuildMesh() const {
         aiVector3D verts = {};
         aiVector3D normals = {};
         aiVector3D uvs = {};
+        int nodeIndex = 0;
+        int faceIndex = 0;
+        int faceIndexIndex = 0;
     };
 
     auto headerRoot = new aiNode("<Header Root>");
-    //auto pieceRoot = new aiNode("<Piece Root>");
+    auto pieceRoot = new aiNode("<Piece Root>");
     auto nodeRoot = new aiNode("<Node Root>");
-
-    auto meshIdx = 0;
 
     std::map<int, aiMaterial *> materials;
     std::vector<aiNode *> boneNodes;
@@ -348,9 +349,10 @@ bool Assimp::LT::LT1::LT1ABCImporter::BuildMesh() const {
     headerRoot->mMetaData->Set(1, "command_string", aiString(m_MeshHeader->CommandString));
 
     m_Scene->mRootNode->addChildren(1, &headerRoot);
-    m_Scene->mRootNode->mNumMeshes = 1;
-    m_Scene->mRootNode->mMeshes = new unsigned int[1];
-    m_Scene->mRootNode->mMeshes[0] = meshIdx;
+    m_Scene->mRootNode->addChildren(1, &pieceRoot);
+    pieceRoot->mNumMeshes = 1;
+    pieceRoot->mMeshes = new unsigned int[1];
+    pieceRoot->mParent = m_Scene->mRootNode;
 
     LTABC_PERF_BEGIN("Building Nodes");
     for (const auto &node : m_Nodes) {
@@ -389,9 +391,10 @@ bool Assimp::LT::LT1::LT1ABCImporter::BuildMesh() const {
 
     m_Scene->mRootNode->addChildren(1, &nodeRoot);
     nodeRoot->mParent = m_Scene->mRootNode;
+
     LTABC_PERF_BEGIN("Building Mesh");
     // 1 for now
-    // This needs to be split up per node
+    // This needs to be split up per lod
     {
         auto mesh = new aiMesh();
         // auto lodIdx = 0;
@@ -407,47 +410,123 @@ bool Assimp::LT::LT1::LT1ABCImporter::BuildMesh() const {
         mesh->mName = name;
         mesh->mPrimitiveTypes = aiPrimitiveType_TRIANGLE;
 
+
+
+#if 1
         mesh->mNumFaces = m_Geometry->FaceCount;
+        mesh->mNumVertices = m_Geometry->VertexCount;
+        mesh->mNumUVComponents[0] = 2;
+
         mesh->mFaces = new aiFace[mesh->mNumFaces];
-
-        mesh->mNumVertices = m_Geometry->FaceCount * 3;
-
         mesh->mVertices = new aiVector3D[mesh->mNumVertices];
-        // mesh->mNormals = new aiVector3D[mesh->mNumVertices];
+        mesh->mNormals = new aiVector3D[mesh->mNumVertices];
+        mesh->mTextureCoords[0] = new aiVector3D[mesh->mNumVertices];
 
-        // mesh->mTextureCoords[0] = new aiVector3D[mesh->mNumVertices];
-        // mesh->mNumUVComponents[0] = 2;
         std::map<int, std::vector<aiVertexWeight>> vertexWeights = {};
+        std::map<int, VertData> reIndexedVertData = {};
+        std::map<int, int> duplicateVerts = {};
+        //auto currentVertCount = 0;
 
+
+        for (auto i = 0; i < static_cast<int>(mesh->mNumVertices); i++) {
+            const auto& vertex = m_Geometry->Vertices[i];
+            mesh->mVertices[i] = LTVector2aiVector(vertex.Location);
+            mesh->mNormals[i] = LTVector2aiVector(vertex.Normal);
+
+            vertexWeights[vertex.NodeIndex].emplace_back(i, 1.0f);
+        }
+        for (auto i = 0; i < static_cast<int>(mesh->mNumFaces); i++) {
+            const auto &face = m_Geometry->Faces[i];
+            mesh->mFaces[i].mNumIndices = 3;
+            mesh->mFaces[i].mIndices = new unsigned int[mesh->mFaces[i].mNumIndices];
+            mesh->mFaces[i].mIndices[0] = face.VertexIndex.x;
+            mesh->mFaces[i].mIndices[1] = face.VertexIndex.y;
+            mesh->mFaces[i].mIndices[2] = face.VertexIndex.z;
+        }
+#else
+        mesh->mNumFaces = m_Geometry->FaceCount;
+        mesh->mNumVertices = m_Geometry->FaceCount * 3;
+        mesh->mNumUVComponents[0] = 2;
+
+        mesh->mFaces = new aiFace[mesh->mNumFaces];
+        mesh->mVertices = new aiVector3D[mesh->mNumVertices];
+        mesh->mNormals = new aiVector3D[mesh->mNumVertices];
+        mesh->mTextureCoords[0] = new aiVector3D[mesh->mNumVertices];
+
+        std::map<int, std::vector<aiVertexWeight>> vertexWeights = {};
+        std::map<int, VertData> reIndexedVertData = {};
+        std::map<int, int> duplicateVerts = {};
         auto currentVertCount = 0;
         for (auto i = 0; i < static_cast<int>(mesh->mNumFaces); i++) {
             const auto &face = m_Geometry->Faces[i];
-            const auto &v1 = m_Geometry->Vertices[face.VertexIndex.x];
-            const auto &v2 = m_Geometry->Vertices[face.VertexIndex.y];
-            const auto &v3 = m_Geometry->Vertices[face.VertexIndex.z];
+            const auto& va = { face.VertexIndex.x, face.VertexIndex.y, face.VertexIndex.z };
 
             mesh->mFaces[i].mNumIndices = 3;
             mesh->mFaces[i].mIndices = new unsigned int[3];
+            mesh->mFaces[i].mIndices[0] = 0;
+            mesh->mFaces[i].mIndices[1] = 0;
+            mesh->mFaces[i].mIndices[2] = 0;
 
-            mesh->mFaces[i].mIndices[0] = currentVertCount + 0;
-            mesh->mFaces[i].mIndices[1] = currentVertCount + 1;
-            mesh->mFaces[i].mIndices[2] = currentVertCount + 2;
+            auto j = 0;
+            for (const auto& vi : va) {
+                auto const& vertex = m_Geometry->Vertices[vi];
+                if (duplicateVerts.count(vi)) {
+                    // Duplicate vertex data
+                    auto newVertexIndex = static_cast<int>(reIndexedVertData.size()) + static_cast<int>(m_Geometry->VertexCount) - 1;
 
-            vertexWeights[v1.NodeIndex].emplace_back(currentVertCount + 0, 1.0f);
-            vertexWeights[v2.NodeIndex].emplace_back(currentVertCount + 1, 1.0f);
-            vertexWeights[v3.NodeIndex].emplace_back(currentVertCount + 2, 1.0f);
+                    reIndexedVertData[newVertexIndex] = {
+                        aiVector3D(vertex.Location.x, vertex.Location.y, vertex.Location.z),
+                        aiVector3D(vertex.Normal.x, vertex.Normal.y, vertex.Normal.z),
+                        aiVector3f(face.UV[j].u, face.UV[j].v, 0.0f),
+                        vertex.NodeIndex,
+                        i,
+                        j
+                    };
+                } else {
+                    mesh->mFaces[i].mIndices[j] = vi;
+                    mesh->mVertices[vi] = LTVector2aiVector(vertex.Location);
+                    mesh->mNormals[vi] = aiVector3f(vertex.Normal.x, vertex.Normal.y, vertex.Normal.z);
+                    mesh->mTextureCoords[0][vi] = aiVector3f(face.UV[j].u, face.UV[j].v, 0.0f);
+                    vertexWeights[vertex.NodeIndex].emplace_back(vi, 1.0f);
 
-            mesh->mVertices[currentVertCount++] = LTVector2aiVector(v1.Location);
-            mesh->mVertices[currentVertCount++] = LTVector2aiVector(v2.Location);
-            mesh->mVertices[currentVertCount++] = LTVector2aiVector(v3.Location);
+                    duplicateVerts[vi] = i;
+
+                    currentVertCount++;
+                }
+                j++;
+            }
         }
+        // Now we can insert any non-unique vertex indexes.
+        for (const auto &[idx, vertexData] : reIndexedVertData) {
+            mesh->mFaces[vertexData.faceIndex].mIndices[vertexData.faceIndexIndex] = currentVertCount;
+            mesh->mVertices[currentVertCount] = vertexData.verts;
+            mesh->mNormals[currentVertCount] = vertexData.normals;
+            mesh->mTextureCoords[0][currentVertCount] = vertexData.uvs;
+            vertexWeights[vertexData.nodeIndex].emplace_back(currentVertCount, 1.0f);
+
+            currentVertCount++;
+        }
+        ai_assert(currentVertCount == static_cast<int>(mesh->mNumVertices));
+#endif
+
         mesh->mNumBones = bones.size();
         mesh->mBones = new aiBone *[mesh->mNumBones];
+
         // Create our mesh bones
         for (auto idx = 0; idx < static_cast<int>(bones.size()); idx++) {
             auto bone = new aiBone();
             const auto &boneData = bones[idx];
-            const auto offsetMatrix = aiMatrix4x4();;
+            const auto offsetMatrix = aiMatrix4x4();
+
+            // Not in the weight list? Create an empty bone instead.
+            if (!vertexWeights.count(idx)) {
+                bone->mName = boneData.LTNode->Name;
+                bone->mWeights = nullptr;
+                bone->mOffsetMatrix = offsetMatrix;
+                bone->mNumWeights = 0;
+                mesh->mBones[idx] = bone;
+                continue;
+            }
 
             const auto &weightList = vertexWeights[idx];
             bone->mNode = boneData.boneNode;
@@ -460,10 +539,63 @@ bool Assimp::LT::LT1::LT1ABCImporter::BuildMesh() const {
         }
 
 
-        m_Scene->mRootNode->mMeshes[0] = 0;
+        pieceRoot->mMeshes[0] = 0;
         m_Scene->mMeshes[0] = mesh;
     }
     LTABC_PERF_END("Building Mesh");
+
+    LTABC_PERF_BEGIN("Building Animations");
+    m_Scene->mNumAnimations = m_AnimationCount;
+    m_Scene->mAnimations = new aiAnimation *[m_Scene->mNumAnimations];
+    for (auto i = 0; i < static_cast<int>(m_Scene->mNumAnimations); i++) {
+        const auto& ltAnim = m_Animations[i];
+        const auto& anim = new aiAnimation();
+
+        anim->mName = ltAnim->Name;
+        anim->mDuration = ltAnim->Length;
+        anim->mTicksPerSecond = 1000;
+        anim->mNumChannels = m_NodeCount;
+        anim->mChannels = new aiNodeAnim *[anim->mNumChannels];
+
+        for (int n = 0; n < static_cast<int>(anim->mNumChannels); ++n) {
+            const auto &channel = new aiNodeAnim();
+            const auto &node = bones[n];
+
+            channel->mNodeName = node.boneNode->mName;
+            channel->mNumPositionKeys = ltAnim->KeyframeCount;
+            channel->mNumRotationKeys = ltAnim->KeyframeCount;
+            channel->mPositionKeys = new aiVectorKey[channel->mNumPositionKeys];
+            channel->mRotationKeys = new aiQuatKey[channel->mNumRotationKeys];
+
+            // Complete our requirement of needing a scale key
+            channel->mNumScalingKeys = 1;
+            channel->mScalingKeys = new aiVectorKey[channel->mNumScalingKeys];
+            channel->mScalingKeys[0].mTime = 0.0;
+            channel->mScalingKeys[0].mValue = aiVector3f(1.0f);
+
+            for (int kf = 0; kf < static_cast<int>(ltAnim->KeyframeCount); ++kf) {
+                const auto &transform = ltAnim->NodeData[n].NodeTransforms[kf];
+                const auto &ltKey = ltAnim->Keyframes[kf];
+
+                auto pos = LT::LTVector2aiVector(transform.Location);
+                auto rot = LT::LTRotation2aiQuaternion(transform.Rotation);
+
+                auto &rotKey = channel->mRotationKeys[kf];
+                rotKey.mTime = ltKey.Time;
+                rotKey.mInterpolation = aiAnimInterpolation_Linear;
+                rotKey.mValue = rot;
+
+                auto &posKey = channel->mPositionKeys[kf];
+                posKey.mTime = ltKey.Time;
+                posKey.mInterpolation = aiAnimInterpolation_Linear;
+                posKey.mValue = pos;
+
+            }
+            anim->mChannels[n] = channel;
+        }
+        m_Scene->mAnimations[i] = anim;
+    }
+    LTABC_PERF_END("Building Animations");
 
     return true;
 }
