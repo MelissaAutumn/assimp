@@ -55,7 +55,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WITH_NO_PADDING __attribute__((packed))
 #else
 #define WITH_NO_PADDING
-#endif/
+#endif
 
 namespace Assimp::LT {
 
@@ -69,6 +69,14 @@ std::string ReadLTString(StreamReaderLE *pBuffer);
 
 struct LTTexCoord {
     float u, v;
+};
+
+struct LTByteVector {
+    int8_t x, y, z;
+};
+
+struct LTShortVector {
+    uint16_t x, y, z;
 };
 
 struct LTVector {

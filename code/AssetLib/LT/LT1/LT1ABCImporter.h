@@ -59,8 +59,16 @@ namespace Assimp::LT::LT1 {
 class LT1ABCImporter {
 public:
     LT1ABCImporter() :
-            m_Buffer(nullptr) {};
-    ~LT1ABCImporter() = default;
+            m_Buffer(nullptr),
+            m_Profiler(nullptr),
+            m_Scene(nullptr),
+            m_MeshHeader(nullptr),
+            m_Geometry(nullptr),
+            m_NodeCount(0),
+            m_AnimationCount(0),
+            m_Animations(nullptr),
+            m_MeshVersion(0) {};
+    ~LT1ABCImporter();
 
     bool CanRead(const std::string &filename, IOSystem *pIOHandler, bool checkSig) const;
     void ReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler);
@@ -70,13 +78,11 @@ protected:
      * Reads in the `SECTION_PIECES` into m_PieceHeader
      * @return true if success
      */
-    bool ReadPieces();
+    bool ReadGeometry();
     bool ReadNodes();
-    bool ReadWeightSets();
-    bool ReadChildModels();
     bool ReadAnimations();
-    bool ReadSockets();
-    bool ReadAnimationBindings();
+    bool ReadAnimationDims();
+    bool ReadTransformInformation();
 
     /**
      * Takes various LTABC structs and constructs an assimp mesh
@@ -93,6 +99,18 @@ protected:
 
 private:
     StreamReaderLE *m_Buffer;
+    Profiling::Profiler *m_Profiler;
+    aiScene *m_Scene;
+
+    Header *m_MeshHeader;
+    Geometry *m_Geometry;
+    std::vector<Node *> m_Nodes; // Vector since we don't know exact node size until we read it!
+    int m_NodeCount; // Estimated count until it's all read
+    int m_AnimationCount;
+    Animation **m_Animations;
+
+
+    int32_t m_MeshVersion;
 };
 } // namespace Assimp::LT::LT1
 

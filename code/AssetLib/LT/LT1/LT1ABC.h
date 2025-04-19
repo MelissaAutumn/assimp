@@ -43,6 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef LT1ABC_H
 #define LT1ABC_H
 
+#include "AssetLib/LT/LTShared.h"
 #include "assimp/types.h"
 #include <string>
 #include <vector>
@@ -50,13 +51,107 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace Assimp::LT::LT1 {
 
 constexpr auto SECTION_HEADER = "Header";
-constexpr auto SECTION_PIECES = "Pieces";
+constexpr auto SECTION_GEOMETRY = "Geometry";
 constexpr auto SECTION_NODES = "Nodes";
-constexpr auto SECTION_CHILD_MODELS = "ChildModels";
 constexpr auto SECTION_ANIMATIONS = "Animation";
-constexpr auto SECTION_SOCKETS = "Sockets";
-constexpr auto SECTION_ANIM_BINDINGS = "AnimBindings";
+constexpr auto SECTION_ANIM_DIMS = "AnimDims";
+constexpr auto SECTION_TRANSFORM_INFO = "TransformInfo";
+
 constexpr auto VERSION_STRING = "MonolithExport Model File v6";
+
+constexpr auto FLAG_NULL = 1;
+constexpr auto FLAG_TRIS = 2;
+constexpr auto FLAG_DEFORMATION = 4;
+
+
+struct Header {
+    std::string VersionString;
+    std::string CommandString;
+};
+
+struct Vertex {
+    LTVector Location;
+    LTByteVector Normals;
+    uint8_t NodeIndex; // Only one weight per vertex
+    uint16_t VertexReplacements[2]; // Unknown, probably for LOD swaps
+} WITH_NO_PADDING;
+
+struct FaceVertex {
+    LTTexCoord UV[3];
+    LTShortVector VertexIndex;
+    LTByteVector Normals;
+} WITH_NO_PADDING;
+
+struct Geometry {
+    LTVector BoundsMin;
+    LTVector BoundsMax;
+    uint32_t LodCount;
+    uint16_t *TriangleStartPosition; // Length of LodCount + 1
+    uint32_t FaceCount;
+    FaceVertex *Faces;
+    uint32_t VertexCount;
+    uint32_t LOD0VertexCount;
+    Vertex *Vertices;
+};
+
+struct Node {
+    LTVector BoundsMin;
+    LTVector BoundsMax;
+    std::string Name;
+    uint16_t Index;
+    uint8_t Flags;
+    // Vertex animation related
+    uint32_t MDVertexCount;
+    uint16_t *MDVertexList;
+    uint32_t ChildCount;
+    // Constructed after read
+    Node* Parent;
+    // Constructed from first animation's frame
+    aiMatrix4x4 BindMatrix;
+    aiMatrix4x4 InvBindMatrix;
+};
+
+struct Keyframe {
+    uint32_t Time;
+    LTVector BoundsMin;
+    LTVector BoundsMax;
+    std::string CommandString;
+};
+
+struct KeyframeTransform {
+    LTVector Location;
+    LTRotation Rotation;
+} WITH_NO_PADDING;
+
+struct VertexTransform {
+    LTByteVector Location;
+} WITH_NO_PADDING;
+
+struct AnimationNodeData {
+    KeyframeTransform *NodeTransforms; // [KeyframeCount]
+    VertexTransform *VertexTransforms; // [KeyframeCount * Node.MDVertexCount]
+    LTVector Scale;
+    LTVector Origin;
+} WITH_NO_PADDING;
+
+struct Animation {
+    std::string Name;
+    uint32_t Length;
+    LTVector BoundsMin;
+    LTVector BoundsMax;
+    uint32_t KeyframeCount;
+    Keyframe *Keyframes;
+    AnimationNodeData *NodeData; // [NodeCount]
+};
+
+struct AnimationDims {
+    LTVector *Dims;
+};
+
+struct TransformInfo {
+    uint32_t FlipGeometry;
+    uint32_t FlipAnimations;
+};
 
 } // namespace Assimp::LT::LT1
 #endif // LT1ABC_H

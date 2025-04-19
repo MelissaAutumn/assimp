@@ -86,10 +86,12 @@ const aiImporterDesc *LTBaseABCImporter::GetInfo() const {
 void LTBaseABCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) {
     // LT2 is first because it's easier to check version
     if (m_pLT2ABCImporter->CanRead(pFile, pIOHandler, false)) {
+        DefaultLogger::get()->info("LT2 mesh found");
         m_pLT2ABCImporter->ReadFile(pFile, pScene, pIOHandler);
         return;
     }
     if (m_pLT1ABCImporter->CanRead(pFile, pIOHandler, false)) {
+        DefaultLogger::get()->info("LT1 mesh found");
         m_pLT1ABCImporter->ReadFile(pFile, pScene, pIOHandler);
         return;
     }
